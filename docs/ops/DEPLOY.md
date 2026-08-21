@@ -1,4 +1,6 @@
-# Deploy / Portability Runbook
+# Deploy / Portability Runbook (OPS / OWNER ONLY)
+
+**Not for consumers.** Do not link this from Admin → Docs. Keep this file for the project owner when doing Phase 6 Hostinger deploy.
 
 One codebase runs everywhere — only environment, database, and scheduling differ.
 Local XAMPP today; Hostinger VPS later (Phase 6). Nothing in the code changes on upload.

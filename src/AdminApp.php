@@ -126,7 +126,7 @@ class AdminApp
                 return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), null, null));
 
             case 'GET /admin/docs':
-                return self::html(200, AdminViews::docsPage(self::renderDoc($query['doc'] ?? 'consumers')));
+                return self::html(200, AdminViews::docsPage(self::resolveGuidePage($query['page'] ?? $query['doc'] ?? 'welcome')));
 
             case 'POST /admin/test/probe':
                 if (!AdminAuth::verifyCsrf($session, $post['csrf'] ?? null)) {
@@ -303,36 +303,57 @@ class AdminApp
         ));
     }
 
-    /** Allowlisted docs — no path traversal, only these two files render. */
-    private const DOCS = [
-        'consumers' => 'CONSUMERS.md',
-        'deploy' => 'DEPLOY.md',
+    /**
+     * Tutorial guide chapters (docs/guide/*.md). Order defines the side nav.
+     * Allowlisted ids only — no path traversal; ops runbooks (docs/ops/) are
+     * never exposed here.
+     */
+    public const GUIDE = [
+        'welcome' => 'Welcome & prerequisites',
+        'api-key' => 'Create an API key',
+        'first-sms' => 'Your first SMS',
+        'plain-php' => 'Plain PHP from scratch',
+        'laravel' => 'Laravel from scratch',
+        'codeigniter' => 'CodeIgniter from scratch',
+        'react-laravel-bff' => 'React + Laravel BFF',
+        'react-node-bff' => 'React + Node BFF',
+        'troubleshooting' => 'Troubleshooting',
+        'next-steps' => 'Next steps',
+    ];
+
+    /** Legacy single-page docs (?doc=consumers) map into the guide. */
+    private const LEGACY_DOCS = [
+        'consumers' => 'welcome',
+        'deploy' => 'welcome',
     ];
 
     /**
-     * @return array{tab:string,title:string,html:string}
+     * Resolve the requested guide page. Unknown/legacy/traversal ids fall
+     * back to the welcome chapter.
+     *
+     * @return array{id:string,title:string,html:string,prev:?string,next:?string}
      */
-    private static function renderDoc(string $requested): array
+    public static function resolveGuidePage(string $requested): array
     {
-        $key = self::DOCS[$requested] ?? null;
-        if ($key === null) {
-            $key = 'CONSUMERS.md';
-            $tab = 'consumers';
-        } else {
-            $tab = $requested;
-        }
+        $requested = self::LEGACY_DOCS[$requested] ?? $requested;
+        $id = isset(self::GUIDE[$requested]) ? $requested : 'welcome';
 
-        $path = dirname(__DIR__) . '/docs/' . $key;
+        $path = dirname(__DIR__) . '/docs/guide/' . $id . '.md';
         $markdown = is_file($path) ? (string) file_get_contents($path) : null;
 
         if ($markdown === null || $markdown === '') {
-            return ['tab' => $tab, 'title' => 'Docs', 'html' => '<p class="error">Document not found on disk.</p>'];
+            return ['id' => $id, 'title' => self::GUIDE[$id], 'html' => '<p class="error">Chapter not found on disk.</p>', 'prev' => null, 'next' => null];
         }
 
+        $ids = array_keys(self::GUIDE);
+        $pos = array_search($id, $ids, true);
+
         return [
-            'tab' => $tab,
-            'title' => $tab === 'deploy' ? 'Deploy runbook' : 'Consumer guide',
+            'id' => $id,
+            'title' => self::GUIDE[$id],
             'html' => Markdown::toHtml($markdown),
+            'prev' => $pos > 0 ? $ids[$pos - 1] : null,
+            'next' => $pos !== false && $pos < count($ids) - 1 ? $ids[$pos + 1] : null,
         ];
     }
 

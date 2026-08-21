@@ -203,7 +203,7 @@ check(str_contains($r['body'], 'HTTP 429'), 'test sends hit the selected key rat
 $db->exec("DELETE FROM sms_messages WHERE api_key_id = " . (int) $keyId);
 $db->exec("DELETE FROM api_keys WHERE id = " . (int) $keyId);
 
-section('Admin Docs page');
+section('Admin Docs page (tutorial guide)');
 
 // Auth gate.
 $freshDocs = [];
@@ -212,19 +212,36 @@ same(302, $r['status'], 'logged-out /admin/docs redirects');
 
 $r = $admin->handle($sess, 'GET', '/admin/docs');
 same(200, $r['status'], 'docs page renders for admin');
-check(str_contains($r['body'], 'Quick start'), 'consumer guide content shown by default');
-check(str_contains($r['body'], 'class="tabs"'), 'tabs rendered');
-check(str_contains($r['body'], '?doc=deploy'), 'deploy tab link present');
+check(str_contains($r['body'], 'side-nav'), 'left side nav rendered');
+check(str_contains($r['body'], 'Welcome &amp; prerequisites'), 'welcome chapter in nav');
+check(str_contains($r['body'], '?page=laravel'), 'laravel chapter linked');
+check(str_contains($r['body'], '?page=codeigniter'), 'codeigniter chapter linked');
+check(str_contains($r['body'], '?page=react-laravel-bff'), 'react-laravel chapter linked');
+check(str_contains($r['body'], '?page=react-node-bff'), 'react-node chapter linked');
+check(str_contains($r['body'], 'What this API is'), 'welcome content shown by default');
 
-$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['doc' => 'deploy']);
-same(200, $r['status'], 'deploy tab renders');
-check(str_contains($r['body'], 'Upload checklist'), 'deploy content shown');
+// Page switching + allowlist.
+$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['page' => 'troubleshooting']);
+check(str_contains($r['body'], 'HTTP responses'), 'troubleshooting page renders');
+check(str_contains($r['body'], 'class="active"'), 'active nav item marked');
 
-// Traversal / unknown doc falls back to consumers and leaks nothing.
-$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['doc' => '../../.env']);
-check(str_contains($r['body'], 'Quick start'), 'unknown doc falls back to consumer guide');
-check(!str_contains($r['body'], 'ADMIN_PASSWORD'), '.env contents not leaked');
-check(!str_contains($r['body'], 'SMS_GATEWAY_PASSWORD='), 'no env secrets in output');
+$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['page' => 'next-steps']);
+check(str_contains($r['body'], 'Production checklist'), 'next-steps page renders');
+
+// Unknown / traversal / legacy ids fall back to welcome and leak nothing.
+foreach ([['page' => 'not-a-chapter'], ['page' => '../../.env'], ['doc' => 'deploy']] as $q) {
+    $r = $admin->handle($sess, 'GET', '/admin/docs', [], $q);
+    check(str_contains($r['body'], 'What this API is'), "fallback to welcome for " . ($q['page'] ?? $q['doc']));
+    check(!str_contains($r['body'], 'ADMIN_PASSWORD'), '.env contents not leaked');
+}
+
+// Ops deploy runbook must never appear in Admin Docs.
+$opsMd = (string) file_get_contents(dirname(__DIR__) . '/docs/ops/DEPLOY.md');
+$marker = 'Hostinger VPS later';
+check(str_contains($opsMd, $marker), 'ops runbook still on disk (sanity)');
+$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['page' => 'welcome']);
+check(!str_contains($r['body'], $marker), 'ops upload checklist not in admin docs');
+check(!str_contains($r['body'], 'docs/ops/DEPLOY.md'), 'no link to ops runbook in admin docs');
 
 section('Markdown renderer');
 

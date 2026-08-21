@@ -4,28 +4,27 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5.8 COMPLETE** (API, admin incl. Docs + Reports pages, worker schedule, delivery-state sync).  
+> **Status: Phase 1–5.9 COMPLETE** (API, admin incl. Docs tutorial + Reports, worker, delivery sync).  
 > **Next for coding agents: nothing mandatory** — see the Recommended backlog; only act if the user asks.  
-> **Phase 6 Hostinger deploy: SKIPPED for now.** Optional later: OpenAPI, webhooks, etc.
+> **Phase 6 Hostinger deploy: SKIPPED.** Ops deploy notes live in [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (owner-only — **not** shown in Admin → Docs).
 
 ---
 
 ## For the next coding agent (read this first)
 
-**Do not** implement Hostinger deploy (Phase 6 is skipped). **Do not** rewrite consumer Markdown from scratch.
+**Do not** put Hostinger/ops deploy runbooks in Admin → Docs (consumers must not see them).  
+**Do not** rewrite the whole API. **Do not** commit Laravel `vendor/` or `node_modules`.
 
-**Implement next: nothing** — Phase 5.8 (Delivery Reports) is complete. Only act on the Recommended backlog or if the user un-skips Phase 6.
+**Implement next: nothing** — Phase 5.9 (Tutorial Docs) is complete. Only act on the Recommended backlog or if the user un-skips Phase 6.
 
 | Already on disk | Notes |
 |-----------------|--------|
-| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | Complete; also at **Admin → Docs** |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Deploy tab; Phase 6 still skipped |
-| [`bin/check-message.php`](bin/check-message.php) | Manual live gateway state — patterns to reuse for sync |
-| Admin | Settings, Keys, Messages, Usage, **Reports**, Test, Docs |
+| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | Current Admin → Docs content (reference-style; to be replaced by guide pages) |
+| [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) | **Ops only** (you / Phase 6) — never render in Admin Docs |
+| Admin Docs | Consumer guide only (deploy tab removed) |
+| Admin | Settings, Keys, Messages, Usage, Reports, Test, Docs |
 
-**Out of scope this pass:** Phase 6 VPS upload, DICT SSO, LOKA migration, inbound SMS (unless user asks).
-
-**Rules:** Never put API keys in React client env. Allowlist admin doc files. Prefer small PHP files; mock gateway only in tests.
+**Rules:** Never put API keys in React client env. Allowlist docs paths only. Prefer small PHP files; mock gateway only in tests.
 
 ---
 
@@ -299,20 +298,9 @@ C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
 * * * * * php /path/to/jelite_sms_api/bin/worker.php >> /path/to/jelite_sms_api/worker.log 2>&1
 ```
 
-#### 2. Deploy portability runbook — ✅ DONE (`docs/DEPLOY.md`)
+#### 2. Deploy portability runbook — ✅ DONE (ops only: `docs/ops/DEPLOY.md`)
 
-One codebase; only env/hosting differs. Document what to change when uploading later (no live deploy yet):
-
-| Setting | Local XAMPP | Hostinger later |
-|---------|-------------|-----------------|
-| `APP_URL` | `http://localhost/projects/jelite_sms_api` | `https://sms-api.yourdomain.com` |
-| `APP_ENV` | `dev` | `prod` → DB `jelite_sms_api_prod` |
-| `DB_*` | local MySQL | Hostinger MySQL |
-| Gateway | cloud or LAN phone | **cloud only** (`api.sms-gate.app`) |
-| Worker | Task Scheduler | cron |
-| Admin | `/admin` | same paths under new base URL |
-
-Also: never commit `.env`; upload code + `.env.example`; run `bin/setup.php` on server; create new prod API keys (or migrate carefully).
+Owner/ops checklist for later Hostinger upload (env swap, cron, cloud gateway). **Not** part of consumer Admin Docs — do not surface that content to integrators.
 
 #### 3. Consumer documentation — ✅ DONE (`docs/CONSUMERS.md`)
 
@@ -337,7 +325,7 @@ Note in each section: swap base URL when Phase 6 goes live.
 
 1. ✅ Worker runs every minute on XAMPP via Task Scheduler (script + docs) — verified live end-to-end.
 2. ✅ `docs/CONSUMERS.md` covers PHP, Laravel, React.
-3. ✅ `docs/DEPLOY.md` lists exactly what to change on upload.
+3. ✅ Ops deploy runbook available at `docs/ops/DEPLOY.md` (not in Admin Docs)
 4. ✅ `README.md` / this plan point to those docs.
 
 ---
@@ -396,7 +384,7 @@ Note in each section: swap base URL when Phase 6 goes live.
 | Choice | Decision |
 |--------|----------|
 | Route | `GET /admin/docs` with optional `?doc=consumers` (default) or `?doc=deploy` |
-| Source | Read from disk: [`docs/CONSUMERS.md`](docs/CONSUMERS.md), [`docs/DEPLOY.md`](docs/DEPLOY.md) only (allowlist — no path traversal) |
+| Source | Read from disk: [`docs/CONSUMERS.md`](docs/CONSUMERS.md) only (deploy runbook removed from Admin Docs; see `docs/ops/DEPLOY.md`) |
 | Rendering | Small in-repo Markdown→HTML helper (no Composer). Support headings, fenced code, tables, lists, bold, inline code, links. Escape HTML by default |
 | Nav | Add **Docs** to admin nav in [`src/AdminViews.php`](src/AdminViews.php) |
 | Content | Do **not** duplicate the guide into PHP strings — always render the Markdown files |
@@ -419,17 +407,16 @@ flowchart LR
 
 1. Add `src/Markdown.php` (or `DocsRenderer.php`) for the Markdown subset above.
 2. `AdminApp`: `GET /admin/docs` — resolve allowlisted doc, render HTML, pass to view; invalid `doc` falls back to consumers.
-3. `AdminViews`: nav link **Docs**; `docsPage()` with tabs Consumer guide | Deploy; CSS for `.docs` (pre/table/code).
-4. Tests in `tests/AdminTest.php`: logged-out redirect; logged-in shows "Quick start"; `?doc=deploy` shows deploy content; traversal/`doc=../../.env` does not leak files.
-5. README Admin UI bullet for **Docs**; mark this Phase 5.7 DONE in `PLAN.md` when complete.
+3. `AdminViews`: nav link **Docs**; consumer guide only (no Deploy tab).
 
 #### Phase 5.7 done when
 
 - [x] `/admin/docs` works for logged-in admin
 - [x] Consumer guide visible (from `docs/CONSUMERS.md`)
-- [x] Deploy tab shows `docs/DEPLOY.md`
 - [x] Editing the Markdown file updates the page on refresh (rendered from disk each request)
-- [x] Tests pass; README + this plan updated (145/145)
+- [x] Tests pass; README + this plan updated
+
+**Later change:** Deploy tab **removed** from Admin Docs. Ops runbook moved to [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (not for consumers).
 
 ---
 
@@ -479,7 +466,7 @@ Without sync first, Reports would only duplicate **Usage**.
 3. ✅ **Sync** — `Worker::syncDeliveries()` + `bin/sync-delivery.php`; also runs after each `bin/worker.php` drain. Maps Delivered → `delivered`, Failed/Cancelled → terminal `failed` (+reason), others recorded raw in `gateway_state`. Window: `SMS_DELIVERY_SYNC_DAYS` (default 7), batch: `WORKER_BATCH_SIZE`.
 4. ✅ **API** — status response includes `gateway_state` and `delivered_at`; key isolation unchanged.
 5. ✅ **Admin Reports** — `GET /admin/reports` (from/to, app, status filters; summary; per-app breakdown; 200-row drill-down) + `GET /admin/reports/export` CSV.
-6. ✅ **Schedule docs** — cron/Task Scheduler note for `bin/sync-delivery.php` in `docs/DEPLOY.md`.
+6. ✅ **Schedule docs** — cron/Task Scheduler note for `bin/sync-delivery.php` in `docs/ops/DEPLOY.md`.
 7. ✅ **Tests** — `tests/DeliverySyncTest.php` (state mapping, window, limit, API fields) + `tests/ReportsTest.php` (auth, aggregates, filters, CSV) — **193/193 passing**.
 8. ✅ **Marked DONE** here + README Admin bullet for Reports.
 
@@ -519,11 +506,58 @@ Prioritized ideas for later phases (do not implement unless user asks):
 
 ---
 
+### Phase 5.9 — Tutorial Docs (side nav + from-scratch guides) — ✅ DONE
+
+**Goal:** Replace the basic single-page Docs dump with a **start-to-finish tutorial** for consumers: ordered chapters, **left side navigation**, and sample projects per framework (plain PHP / Laravel / CodeIgniter / React).
+
+**Ops deploy content stays out of Admin Docs.** Owner-only file: [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md). Never expose Hostinger/upload checklists in consumer Docs.
+
+#### Locked design
+
+| Choice | Decision |
+|--------|----------|
+| Structure | `docs/guide/*.md` multi-page chapters |
+| Admin UI | Sticky **left side nav** + main content |
+| Routing | `GET /admin/docs?page=welcome` (allowlisted ids only) |
+| Samples | `examples/plain-php/` runnable; Laravel/CI/React drop-ins under `examples/` (no vendor/node_modules) |
+| CONSUMERS.md | Index or redirect to guide welcome |
+| Deploy | **Not** in Admin Docs — `docs/ops/` only |
+
+#### Guide side-nav chapters
+
+1. Welcome / prerequisites  
+2. Create API key  
+3. First SMS (curl) + verify in Messages/Usage/Test/Reports  
+4. Plain PHP from scratch (`examples/plain-php`)  
+5. Laravel from scratch  
+6. CodeIgniter from scratch  
+7. React + Laravel BFF  
+8. React + Node BFF (short)  
+9. Troubleshooting  
+10. Next steps (no Hostinger checklist)
+
+#### Agent checklist — ✅ all done
+
+1. ✅ Page registry (`AdminApp::GUIDE`) + sticky side nav UI + allowlist `docs/guide/*` (unknown/legacy/traversal ids fall back to welcome)
+2. ✅ 10 chapters written + examples shipped: `examples/plain-php` (runnable), `laravel/`, `codeigniter/`, `react-node-bff/` (runnable) drop-ins
+3. ✅ Tests: nav, page switching, allowlist fallback, **assert Admin Docs never contains ops/DEPLOY content** (204/204 passing)
+4. ✅ Marked 5.9 DONE in PLAN/README
+
+#### Done when — ✅ all met
+
+- [x] Side nav + multi-page tutorials in Admin → Docs
+- [x] PHP / Laravel / CI / React from-scratch paths
+- [x] `examples/plain-php` works locally
+- [x] Ops deploy runbook **not** visible in Admin Docs
+- [x] Tests + PLAN/README updated
+
+---
+
 ### Phase 6 — Hostinger deploy — SKIPPED (for now)
 
-Do **not** implement until the user explicitly asks. Runbook remains in [`docs/DEPLOY.md`](docs/DEPLOY.md) for later.
+Do **not** implement until the user explicitly asks. Owner runbook: [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (**not** Admin Docs).
 
-When un-skipped: same VPS as consumer apps, cloud gateway only, cron for `bin/worker.php`, one key per app — follow `docs/DEPLOY.md`.
+When un-skipped: same VPS as consumer apps, cloud gateway only, cron for `bin/worker.php` + `bin/sync-delivery.php`, one key per app.
 
 ---
 
@@ -534,23 +568,28 @@ When un-skipped: same VPS as consumer apps, cloud gateway only, cron for `bin/wo
 **Phase 5.6 — COMPLETE** (`docs/CONSUMERS.md` expanded: quick start, full PHP helpers,
 Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, troubleshooting table).
 
-**Phase 5.7 — COMPLETE** (`/admin/docs` with tabs rendering the Markdown guides via in-repo
-`src/Markdown.php`; allowlisted docs only, traversal-safe; 145/145 tests passing).
+**Phase 5.7 — COMPLETE** (Admin Docs for consumers; deploy tab removed — ops runbook at `docs/ops/DEPLOY.md`).
 
 **Phase 5.8 — COMPLETE** (delivery-state sync via `Worker::syncDeliveries()` +
 `bin/sync-delivery.php`; `delivered` status, `delivered_at`, `gateway_state` columns with
 idempotent migration; Admin **Reports** page `/admin/reports` with filters + CSV export;
-`GET /api/v1/sms/{id}` exposes `gateway_state`/`delivered_at`; 193/193 tests passing).
+`GET /api/v1/sms/{id}` exposes `gateway_state`/`delivered_at`; tests passing).
+
+**Phase 5.9 — COMPLETE** (Admin → Docs redesigned as a 10-chapter tutorial with sticky
+left side nav; `docs/guide/*` allowlisted pages; from-scratch guides for plain PHP /
+Laravel / CodeIgniter / React BFFs; runnable samples in `examples/plain-php` and
+`examples/react-node-bff`; ops deploy content excluded — `docs/ops/DEPLOY.md` owner-only;
+204/204 tests passing).
 
 **Phase 6 — SKIPPED:**
 
-- Live Hostinger deploy (user deferred)
+- Live Hostinger deploy (user deferred); see `docs/ops/DEPLOY.md` when ready
 
 **Later / optional (only if user asks):**
 
 - See **Recommended backlog** above (filters, webhooks, bulk, OpenAPI, …)
 
-Diagnostics helpers: `bin/check-queue.php`, `bin/check-message.php <gateway_message_id>` (reuse for sync).
+Diagnostics helpers: `bin/check-queue.php`, `bin/check-message.php <gateway_message_id>`.
 
 ---
 
@@ -612,6 +651,6 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 ## How to start in Cursor (next agent)
 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
-2. Read **"For the next coding agent"** in this file — all planned phases (1–5.8) are complete
-3. Only act if the user asks for a Recommended-backlog item or un-skips **Phase 6** (Hostinger deploy — follow `docs/DEPLOY.md`)
+2. Read **"For the next coding agent"** in this file — all planned phases (1–5.9) are complete
+3. Only act if the user asks for a Recommended-backlog item or un-skips **Phase 6** (Hostinger deploy — follow `docs/ops/DEPLOY.md`)
 4. Only create a git commit if the user explicitly asks

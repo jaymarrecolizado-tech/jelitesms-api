@@ -1,0 +1,14 @@
+{
+  "name": "react-node-bff-sms-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express BFF for JE Lite SMS API (React apps call this, never the SMS API directly)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

@@ -2,6 +2,10 @@
 
 How to send SMS from your app (plain PHP, Laravel, CodeIgniter, or React-backed projects) via the JE Lite SMS API.
 
+> **Prefer a guided tour?** Open **Admin → Docs** for the start-to-finish tutorial with
+> per-framework chapters and runnable samples in `examples/`. This file is the complete
+> reference on one page.
+
 ## Quick start (5 minutes)
 
 1. **Create a key** — log into the Admin UI (`http://localhost/projects/jelite_sms_api/admin`) → **API Keys** → create a named key for your app (e.g. `MyLaravelApp`). Copy the plaintext key — it is shown **once**.
@@ -395,7 +399,7 @@ fetch('http://.../api/v1/sms/send', {
 | `422 validation_failed` with `fields.to` | Phone format unrecognized | Use `09XXXXXXXXX`, `9XXXXXXXXX`, or `+639XXXXXXXXX` |
 | `422` with `fields.message` | Empty or over-length message | Max length shown in Admin → Settings (`SMS_MAX_MESSAGE_LENGTH`, default 320) |
 | `429 rate_limited` | Key exceeded its per-minute limit | Back off and retry; ask the admin to raise the key's rate in Admin → API Keys |
-| Message stuck at `queued` | Worker not running | Local: run `powershell -ExecutionPolicy Bypass -File bin\register-worker-task.ps1` (or Admin → Test → "Run worker once"). Server: install the cron line from `docs/DEPLOY.md` |
+| Message stuck at `queued` | Worker not running | Local: run `powershell -ExecutionPolicy Bypass -File bin\register-worker-task.ps1` (or Admin → Test → "Run worker once"). On a server, schedule `bin/worker.php` every minute via cron. |
 | Message `failed` with HTTP error in Admin → Messages | Gateway rejected/down | Check Admin → Test → *Check configuration*; verify gateway credentials in Admin → Settings |
 | Sent but phone got nothing after minutes | Device offline/no signal, or carrier delay | Ask admin to check the Android SMS Gateway app is connected; inspect state via `php bin/check-message.php <gateway_message_id>` |
 | `200` instead of expected `202` | Duplicate `client_ref` replayed | Expected idempotency behavior — use a fresh `client_ref` for genuinely new messages |

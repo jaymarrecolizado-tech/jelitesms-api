@@ -21,8 +21,8 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
 | `bin/check-queue.php` | Show recent queue rows |
 | `bin/check-message.php` | Query live gateway state for a gateway message ID |
 | `database/schema.sql` | Tables: `api_keys`, `sms_messages`, `app_settings` |
-| `docs/CONSUMERS.md` | Integration guides: plain PHP, Laravel, React |
-| `docs/DEPLOY.md` | Portability runbook: XAMPP → Hostinger checklist + cron snippets |
+| `docs/CONSUMERS.md` | Consumer integration guide (Admin → Docs) |
+| `docs/ops/DEPLOY.md` | Owner-only Hostinger/portability runbook (not in Admin Docs) |
 | `tests/run.php` | Dependency-free test suite (mock gateway) |
 
 ## Setup (XAMPP)
@@ -48,7 +48,7 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
 
 ## Consumer integration
 
-Full guides for fresh **plain PHP**, **Laravel**, and **React** projects live in [`docs/CONSUMERS.md`](docs/CONSUMERS.md). Deploy/portability checklist (XAMPP → Hostinger) is in [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Full guides for fresh **plain PHP**, **Laravel**, and **React** projects live in [`docs/CONSUMERS.md`](docs/CONSUMERS.md) (also **Admin → Docs**). Owner deploy notes (not for consumers): [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md).
 
 ## API v1
 
@@ -123,7 +123,7 @@ Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USE
 - **Usage** — per-app (API key) counts for a date range: total / sent / delivered / failed / queued / sending, plus last used. Default range is the last 7 days.
 - **Reports** — delivery reports for a date range with app/status filters: summary totals, per-app breakdown, message drill-down (status + gateway state + delivered time), and CSV export. Delivery state is synced from the gateway by `bin/sync-delivery.php` (also run after each worker drain).
 - **Test** — config probe (database/gateway status) and send-a-test-SMS as a selected consumer key, with optional one-shot worker run. Sends count against that key's rate limit; the response panel shows the same JSON shape consumer apps get.
-- **Docs** — read the consumer integration guide and deploy runbook right in the admin UI (`docs/CONSUMERS.md` / `docs/DEPLOY.md`, rendered live from disk).
+- **Docs** — start-to-finish integration tutorial with a left side nav: welcome, API keys, first SMS, and from-scratch guides for plain PHP / Laravel / CodeIgniter / React (chapters in `docs/guide/`, samples in `examples/`). Ops/Hostinger deploy notes are **not** shown here (`docs/ops/` only).
 
 Admin credentials live only in `.env` (`ADMIN_USER`, `ADMIN_PASSWORD`) and cannot be changed from the UI. Consumer Bearer keys do not grant admin access.
 
@@ -139,9 +139,15 @@ Uses the `jelite_sms_api_test` database and a mocked gateway transport — no re
 
 Delivery state is synced from the gateway: `sent` = accepted by the gateway, `delivered` = confirmed by the handset. The sync runs after every worker drain and via `bin/sync-delivery.php` (schedule it alongside the worker). `GET /api/v1/sms/{id}` exposes `status`, `gateway_state`, and `delivered_at`; **Admin → Reports** shows aggregates + CSV.
 
-**Hostinger deploy (Phase 6) is skipped for now.**
+## Phase 5.9 — Tutorial Docs (implemented)
 
-**Remaining backlog (only if asked):** webhooks on delivered/failed, message filters/requeue UI, bulk/scheduled send, OpenAPI. See `PLAN.md`.
+**Admin → Docs** is now a multi-page tutorial with a sticky left side nav: 10 chapters from
+prerequisites to next steps, covering plain PHP, Laravel, CodeIgniter, React + Laravel BFF,
+and React + Node BFF. Runnable/drop-in samples live in `examples/` (`plain-php` and
+`react-node-bff` run as-is). Ops deploy content stays out of Admin Docs —
+[`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) is owner-only. Phase 6 remains skipped.
+
+**Other backlog (only if asked):** webhooks, message filters, bulk/scheduled send, OpenAPI.
 
 ## Out of scope
 

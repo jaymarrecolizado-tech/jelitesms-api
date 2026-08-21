@@ -346,21 +346,36 @@ class AdminViews
     }
 
     /**
-     * Admin Docs page: renders allowlisted Markdown guides with tabs.
+     * Admin Docs page: multi-page tutorial with a sticky left side nav.
      *
-     * @param array{tab:string,title:string,html:string} $doc
+     * @param array{id:string,title:string,html:string,prev:?string,next:?string} $guide
      */
-    public static function docsPage(array $doc): string
+    public static function docsPage(array $guide): string
     {
-        $tabs = '';
-        foreach (['consumers' => 'Consumer guide', 'deploy' => 'Deploy runbook'] as $key => $label) {
-            $class = $doc['tab'] === $key ? ' class="active"' : '';
-            $tabs .= '<a href="' . AdminApp::url('/admin/docs') . '?doc=' . $key . '"' . $class . '>' . $label . '</a>';
+        $nav = '';
+        foreach (AdminApp::GUIDE as $id => $title) {
+            $num = array_search($id, array_keys(AdminApp::GUIDE), true) + 1;
+            $class = $guide['id'] === $id ? ' class="active"' : '';
+            $nav .= '<a href="' . AdminApp::url('/admin/docs') . '?page=' . $id . '"' . $class . '>'
+                . '<span class="num">' . $num . '</span>' . e($title) . '</a>';
         }
 
-        $content = '<h1>Docs</h1><p class="hint">Rendered live from the <code>docs/</code> Markdown files — '
-            . 'edits show up on refresh.</p><nav class="tabs">' . $tabs . '</nav>'
-            . '<div class="docs card">' . $doc['html'] . '</div>';
+        $pager = '';
+        if ($guide['prev'] !== null || $guide['next'] !== null) {
+            $pager .= '<nav class="pager">';
+            $pager .= $guide['prev'] !== null
+                ? '<a class="prev" href="' . AdminApp::url('/admin/docs') . '?page=' . $guide['prev'] . '">← ' . e((string) AdminApp::GUIDE[$guide['prev']]) . '</a>'
+                : '<span></span>';
+            $pager .= $guide['next'] !== null
+                ? '<a class="next" href="' . AdminApp::url('/admin/docs') . '?page=' . $guide['next'] . '">' . e((string) AdminApp::GUIDE[$guide['next']]) . ' →</a>'
+                : '<span></span>';
+            $pager .= '</nav>';
+        }
+
+        $content = '<div class="docs-layout">'
+            . '<aside class="side-nav"><h3>Integration guide</h3>' . $nav . '</aside>'
+            . '<main class="docs card">' . $guide['html'] . $pager . '</main>'
+            . '</div>';
 
         return self::layout('Docs', '/admin/docs', $content, true);
     }
@@ -409,6 +424,17 @@ pre { background: #eef2f6; padding: 10px; border-radius: 6px; overflow-x: auto; 
 .docs pre code { background: transparent; color: inherit; padding: 0; }
 .card.filter { grid-template-columns: 1fr 1fr auto; align-items: end; max-width: 560px; }
 .button-link { display: inline-block; padding: 7px 14px; background: #1660a8; color: #fff; border-radius: 6px; text-decoration: none; font-size: 14px; }
+.docs-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
+.side-nav { position: sticky; top: 12px; background: #fff; border: 1px solid #dbe2e8; border-radius: 8px; padding: 10px 0; }
+.side-nav h3 { margin: 4px 14px 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #5b6b7a; }
+.side-nav a { display: flex; gap: 8px; align-items: baseline; padding: 6px 14px; text-decoration: none; color: #1c2733; font-size: 13.5px; }
+.side-nav a:hover { background: #eef2f6; }
+.side-nav a.active { background: #1660a8; color: #fff; }
+.side-nav a .num { display: inline-block; min-width: 18px; font-size: 11px; color: #5b6b7a; }
+.side-nav a.active .num { color: #cfe0f2; }
+.pager { display: flex; justify-content: space-between; margin-top: 22px; padding-top: 12px; border-top: 1px solid #dbe2e8; }
+.pager a { color: #1660a8; text-decoration: none; font-size: 14px; }
+@media (max-width: 800px) { .docs-layout { grid-template-columns: 1fr; } .side-nav { position: static; } }
 @media (max-width: 640px) { .card.filter { grid-template-columns: 1fr; } }
 </style>
 CSS;
