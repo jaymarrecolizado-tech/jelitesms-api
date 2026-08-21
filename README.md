@@ -121,6 +121,7 @@ Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USE
 - **Messages** — read-only view of the 50 most recent queue rows.
 - **Usage** — per-app (API key) counts for a date range: total / sent / failed / queued / sending, plus last used. Default range is the last 7 days.
 - **Test** — config probe (database/gateway status) and send-a-test-SMS as a selected consumer key, with optional one-shot worker run. Sends count against that key's rate limit; the response panel shows the same JSON shape consumer apps get.
+- **Docs** — read the consumer integration guide and deploy runbook right in the admin UI (`docs/CONSUMERS.md` / `docs/DEPLOY.md`, rendered live from disk).
 
 Admin credentials live only in `.env` (`ADMIN_USER`, `ADMIN_PASSWORD`) and cannot be changed from the UI. Consumer Bearer keys do not grant admin access.
 
@@ -132,11 +133,11 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Phase 5.6 Consumer docs coverage
+## Planned next: Phase 5.7 Admin Docs page
 
 **Hostinger deploy (Phase 6) is skipped for now.**
 
-**Next agent work:** expand [`docs/CONSUMERS.md`](docs/CONSUMERS.md) per **Phase 5.6** in [`PLAN.md`](PLAN.md) (quick start, fuller PHP/Laravel/React, CodeIgniter, troubleshooting). Baseline file already exists — expand, don’t delete.
+**Next agent work:** add Admin **Docs** at `/admin/docs` per **Phase 5.7** in [`PLAN.md`](PLAN.md) — render [`docs/CONSUMERS.md`](docs/CONSUMERS.md) (and Deploy tab for [`docs/DEPLOY.md`](docs/DEPLOY.md)) inside the logged-in admin UI. Do not duplicate the Markdown into PHP.
 
 ## Out of scope
 

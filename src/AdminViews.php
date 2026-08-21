@@ -17,6 +17,7 @@ class AdminViews
                 '/admin/messages' => 'Messages',
                 '/admin/usage' => 'Usage',
                 '/admin/test' => 'Test',
+                '/admin/docs' => 'Docs',
             ];
             foreach ($links as $href => $label) {
                 $url = AdminApp::url($href);
@@ -231,6 +232,26 @@ class AdminViews
         return self::layout('Test', '/admin/test', $content, true);
     }
 
+    /**
+     * Admin Docs page: renders allowlisted Markdown guides with tabs.
+     *
+     * @param array{tab:string,title:string,html:string} $doc
+     */
+    public static function docsPage(array $doc): string
+    {
+        $tabs = '';
+        foreach (['consumers' => 'Consumer guide', 'deploy' => 'Deploy runbook'] as $key => $label) {
+            $class = $doc['tab'] === $key ? ' class="active"' : '';
+            $tabs .= '<a href="' . AdminApp::url('/admin/docs') . '?doc=' . $key . '"' . $class . '>' . $label . '</a>';
+        }
+
+        $content = '<h1>Docs</h1><p class="hint">Rendered live from the <code>docs/</code> Markdown files — '
+            . 'edits show up on refresh.</p><nav class="tabs">' . $tabs . '</nav>'
+            . '<div class="docs card">' . $doc['html'] . '</div>';
+
+        return self::layout('Docs', '/admin/docs', $content, true);
+    }
+
     private static function css(): string
     {
         return <<<'CSS'
@@ -264,6 +285,15 @@ textarea { padding: 7px 9px; border: 1px solid #b9c4cd; border-radius: 5px; font
 label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
 label.check input { width: auto; }
 pre { background: #eef2f6; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tabs a { text-decoration: none; padding: 6px 14px; border-radius: 6px; background: #e3eaf1; color: #1c2733; font-size: 14px; }
+.tabs a.active { background: #1660a8; color: #fff; }
+.docs h1, .docs h2, .docs h3, .docs h4 { margin: 18px 0 8px; line-height: 1.3; }
+.docs h1 { font-size: 22px; border-bottom: 2px solid #dbe2e8; padding-bottom: 6px; }
+.docs h2 { font-size: 18px; }
+.docs p, .docs li { font-size: 14px; line-height: 1.55; }
+.docs pre { background: #10263c; color: #dce8f4; }
+.docs pre code { background: transparent; color: inherit; padding: 0; }
 .card.filter { grid-template-columns: 1fr 1fr auto; align-items: end; max-width: 560px; }
 @media (max-width: 640px) { .card.filter { grid-template-columns: 1fr; } }
 </style>

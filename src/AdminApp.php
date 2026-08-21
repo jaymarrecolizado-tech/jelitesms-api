@@ -119,6 +119,9 @@ class AdminApp
             case 'GET /admin/test':
                 return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), null, null));
 
+            case 'GET /admin/docs':
+                return self::html(200, AdminViews::docsPage(self::renderDoc($query['doc'] ?? 'consumers')));
+
             case 'POST /admin/test/probe':
                 if (!AdminAuth::verifyCsrf($session, $post['csrf'] ?? null)) {
                     return self::forbidden($session);
@@ -258,6 +261,39 @@ class AdminApp
             null,
             ['status' => $result['status'], 'body' => $result['body'], 'worker' => $workerNote]
         ));
+    }
+
+    /** Allowlisted docs — no path traversal, only these two files render. */
+    private const DOCS = [
+        'consumers' => 'CONSUMERS.md',
+        'deploy' => 'DEPLOY.md',
+    ];
+
+    /**
+     * @return array{tab:string,title:string,html:string}
+     */
+    private static function renderDoc(string $requested): array
+    {
+        $key = self::DOCS[$requested] ?? null;
+        if ($key === null) {
+            $key = 'CONSUMERS.md';
+            $tab = 'consumers';
+        } else {
+            $tab = $requested;
+        }
+
+        $path = dirname(__DIR__) . '/docs/' . $key;
+        $markdown = is_file($path) ? (string) file_get_contents($path) : null;
+
+        if ($markdown === null || $markdown === '') {
+            return ['tab' => $tab, 'title' => 'Docs', 'html' => '<p class="error">Document not found on disk.</p>'];
+        }
+
+        return [
+            'tab' => $tab,
+            'title' => $tab === 'deploy' ? 'Deploy runbook' : 'Consumer guide',
+            'html' => Markdown::toHtml($markdown),
+        ];
     }
 
     /**

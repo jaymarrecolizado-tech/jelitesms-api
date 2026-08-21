@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Jelite\AdminApp;
 use Jelite\AdminAuth;
 use Jelite\Config;
+use Jelite\Markdown;
 use Jelite\SettingsRepository;
 use Jelite\Worker;
 
@@ -201,6 +202,53 @@ check(str_contains($r['body'], 'HTTP 429'), 'test sends hit the selected key rat
 // Cleanup.
 $db->exec("DELETE FROM sms_messages WHERE api_key_id = " . (int) $keyId);
 $db->exec("DELETE FROM api_keys WHERE id = " . (int) $keyId);
+
+section('Admin Docs page');
+
+// Auth gate.
+$freshDocs = [];
+$r = $admin->handle($freshDocs, 'GET', '/admin/docs');
+same(302, $r['status'], 'logged-out /admin/docs redirects');
+
+$r = $admin->handle($sess, 'GET', '/admin/docs');
+same(200, $r['status'], 'docs page renders for admin');
+check(str_contains($r['body'], 'Quick start'), 'consumer guide content shown by default');
+check(str_contains($r['body'], 'class="tabs"'), 'tabs rendered');
+check(str_contains($r['body'], '?doc=deploy'), 'deploy tab link present');
+
+$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['doc' => 'deploy']);
+same(200, $r['status'], 'deploy tab renders');
+check(str_contains($r['body'], 'Upload checklist'), 'deploy content shown');
+
+// Traversal / unknown doc falls back to consumers and leaks nothing.
+$r = $admin->handle($sess, 'GET', '/admin/docs', [], ['doc' => '../../.env']);
+check(str_contains($r['body'], 'Quick start'), 'unknown doc falls back to consumer guide');
+check(!str_contains($r['body'], 'ADMIN_PASSWORD'), '.env contents not leaked');
+check(!str_contains($r['body'], 'SMS_GATEWAY_PASSWORD='), 'no env secrets in output');
+
+section('Markdown renderer');
+
+$html = Markdown::toHtml("# Title\n\nSome **bold** and `code` text.");
+check(str_contains($html, '<h1>Title</h1>'), 'heading rendered');
+check(str_contains($html, '<strong>bold</strong>'), 'bold rendered');
+check(str_contains($html, '<code>code</code>'), 'inline code rendered');
+
+$html = Markdown::toHtml("```\n<b>&raw</b>\n```");
+check(str_contains($html, '&lt;b&gt;&amp;raw&lt;/b&gt;'), 'fenced code escaped');
+
+$html = Markdown::toHtml("| A | B |\n|---|---|\n| 1 | 2 |");
+check(str_contains($html, '<table>') && str_contains($html, '<td>1</td>'), 'table rendered');
+
+$html = Markdown::toHtml("- one\n- two\n\n1. first\n2. second");
+check(str_contains($html, '<ul><li>one</li><li>two</li></ul>'), 'unordered list rendered');
+check(str_contains($html, '<ol><li>first</li><li>second</li></ol>'), 'ordered list rendered');
+
+$html = Markdown::toHtml('[docs](https://example.com/x) and [bad](javascript:alert(1))');
+check(str_contains($html, '<a href="https://example.com/x"'), 'safe link kept');
+check(!str_contains($html, 'href="javascript:'), 'javascript: URL stripped');
+
+$html = Markdown::toHtml('<script>alert(1)</script>');
+check(!str_contains($html, '<script>'), 'raw HTML escaped');
 
 section('Admin Usage page');
 

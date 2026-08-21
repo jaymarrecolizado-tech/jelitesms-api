@@ -4,24 +4,23 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5.6 COMPLETE** (API, admin, worker schedule, full consumer docs
+> **Status: Phase 1–5.7 COMPLETE** (API, admin incl. Docs page, worker schedule, consumer docs
 > coverage in [`docs/CONSUMERS.md`](docs/CONSUMERS.md) + [`docs/DEPLOY.md`](docs/DEPLOY.md)).  
-> **Phase 6 Hostinger deploy: SKIPPED for now** — runbook ready when you are.  
-> **Remaining optional items:** delivery-state sync, `openapi.yaml`.
+> **Phase 6 Hostinger deploy: SKIPPED for now.** Optional later: delivery-state sync, `openapi.yaml`.
 
 ---
 
 ## For the next coding agent (read this first)
 
-**Do not** implement Hostinger deploy (Phase 6 is skipped). **Do not** rebuild the API or admin UI.
+**Do not** implement Hostinger deploy (Phase 6 is skipped). **Do not** rewrite [`docs/CONSUMERS.md`](docs/CONSUMERS.md) from scratch.
 
-**Nothing pending for coding agents** — Phase 5.6 (consumer docs coverage) is complete. Only touch this project if the user asks for the optional items (delivery-state sync, `openapi.yaml`) or un-skips Phase 6.
+**Implement next:** nothing — Phase 5.7 (Admin Docs page) is complete. Only act on optional items (delivery-state sync, `openapi.yaml`) or if the user un-skips Phase 6.
 
 | Already on disk | Notes |
 |-----------------|--------|
-| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | **Complete**: quick start, PHP helpers, Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, troubleshooting |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Keep as-is; deploy remains out of scope until user un-skips Phase 6 |
-| Admin `/admin/keys`, `/admin/test`, `/admin/usage` | Referenced throughout the consumer docs |
+| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | **Complete**: quick start, PHP helpers, Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, troubleshooting. Rendered live at **Admin → Docs** |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Rendered on the Docs page deploy tab; deploy itself remains out of scope until user un-skips Phase 6 |
+| Admin `/admin/keys`, `/admin/test`, `/admin/usage`, `/admin/docs` | Referenced throughout the consumer docs |
 
 **Out of scope this pass:** Phase 6 VPS upload, DICT SSO, LOKA migration, inbound SMS, OpenAPI (unless asked), changing runtime API behavior.
 
@@ -384,6 +383,55 @@ Note in each section: swap base URL when Phase 6 goes live.
 
 ---
 
+### Phase 5.7 — Admin Docs page — ✅ DONE
+
+**Goal:** Dedicated admin page so operators can read the consumer (and deploy) guides in the browser without opening Markdown in the IDE.
+
+**URL:** `http://localhost/projects/jelite_sms_api/admin/docs`  
+**Auth:** logged-in admin session only (same as Settings / Keys / …).
+
+#### Locked design
+
+| Choice | Decision |
+|--------|----------|
+| Route | `GET /admin/docs` with optional `?doc=consumers` (default) or `?doc=deploy` |
+| Source | Read from disk: [`docs/CONSUMERS.md`](docs/CONSUMERS.md), [`docs/DEPLOY.md`](docs/DEPLOY.md) only (allowlist — no path traversal) |
+| Rendering | Small in-repo Markdown→HTML helper (no Composer). Support headings, fenced code, tables, lists, bold, inline code, links. Escape HTML by default |
+| Nav | Add **Docs** to admin nav in [`src/AdminViews.php`](src/AdminViews.php) |
+| Content | Do **not** duplicate the guide into PHP strings — always render the Markdown files |
+
+```mermaid
+flowchart LR
+  Nav[Admin_Docs_nav]
+  Route[GET_admin_docs]
+  Allow[Allowlisted_docs_read]
+  Md[Markdown_to_HTML]
+  View[docsPage_tabs]
+
+  Nav --> Route
+  Route --> Allow
+  Allow --> Md
+  Md --> View
+```
+
+#### Agent implementation checklist
+
+1. Add `src/Markdown.php` (or `DocsRenderer.php`) for the Markdown subset above.
+2. `AdminApp`: `GET /admin/docs` — resolve allowlisted doc, render HTML, pass to view; invalid `doc` falls back to consumers.
+3. `AdminViews`: nav link **Docs**; `docsPage()` with tabs Consumer guide | Deploy; CSS for `.docs` (pre/table/code).
+4. Tests in `tests/AdminTest.php`: logged-out redirect; logged-in shows "Quick start"; `?doc=deploy` shows deploy content; traversal/`doc=../../.env` does not leak files.
+5. README Admin UI bullet for **Docs**; mark this Phase 5.7 DONE in `PLAN.md` when complete.
+
+#### Phase 5.7 done when
+
+- [x] `/admin/docs` works for logged-in admin
+- [x] Consumer guide visible (from `docs/CONSUMERS.md`)
+- [x] Deploy tab shows `docs/DEPLOY.md`
+- [x] Editing the Markdown file updates the page on refresh (rendered from disk each request)
+- [x] Tests pass; README + this plan updated (145/145)
+
+---
+
 ### Phase 6 — Hostinger deploy — SKIPPED (for now)
 
 Do **not** implement until the user explicitly asks. Runbook remains in [`docs/DEPLOY.md`](docs/DEPLOY.md) for later.
@@ -398,6 +446,9 @@ When un-skipped: same VPS as consumer apps, cloud gateway only, cron for `bin/wo
 
 **Phase 5.6 — COMPLETE** (`docs/CONSUMERS.md` expanded: quick start, full PHP helpers,
 Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, troubleshooting table).
+
+**Phase 5.7 — COMPLETE** (`/admin/docs` with tabs rendering the Markdown guides via in-repo
+`src/Markdown.php`; allowlisted docs only, traversal-safe; 145/145 tests passing).
 
 **Phase 6 — SKIPPED:**
 
@@ -469,6 +520,6 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 ## How to start in Cursor (next agent)
 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
-2. Read **"For the next coding agent"** in this file — all planned phases are complete
+2. Read **"For the next coding agent"** in this file — all planned phases (1–5.7) are complete
 3. Only act if the user asks for optional items (delivery-state sync, `openapi.yaml`) or un-skips **Phase 6** (Hostinger deploy — follow `docs/DEPLOY.md`)
 4. Only create a git commit if the user explicitly asks
