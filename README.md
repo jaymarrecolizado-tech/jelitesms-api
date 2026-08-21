@@ -103,6 +103,16 @@ React: call your own backend only — never embed the Bearer key in browser code
 
 Cloud is HTTPS-only (HTTP can 308 and break POST); the client normalizes this automatically.
 
+## Admin UI
+
+Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWORD` from `.env`.
+
+- **Settings** — edit gateway/SMS tunables (`SMS_*`, `APP_URL`) without touching `.env`; values are stored in the `app_settings` table and override `.env`. The gateway password is write-only (blank = unchanged).
+- **API Keys** — create (plaintext shown once), list, revoke.
+- **Messages** — read-only view of the 50 most recent queue rows.
+
+Admin credentials live only in `.env` (`ADMIN_USER`, `ADMIN_PASSWORD`) and cannot be changed from the UI. Consumer Bearer keys do not grant admin access.
+
 ## Tests
 
 ```
@@ -110,6 +120,13 @@ C:\xampp\php\php.exe tests\run.php
 ```
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
+
+## Planned next: Admin UI + Hostinger
+
+See [`PLAN.md`](PLAN.md) for full detail.
+
+- **Phase 5 — Admin UI** (`/admin`): password-protected settings (gateway + SMS tunables), API key create/list/revoke, recent messages (read-only). Settings stored in MySQL `app_settings`; `APP_ENV` / `DB_*` / `ADMIN_*` stay in `.env` only.
+- **Phase 6 — Hostinger**: deploy this API on the same VPS as your apps; phone via sms-gate.app **cloud** (not phone LAN IP).
 
 ## Out of scope
 

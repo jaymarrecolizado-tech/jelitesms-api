@@ -1,0 +1,155 @@
+<?php
+
+namespace Jelite;
+
+use function htmlspecialchars as e;
+
+/** HTML rendering for the admin UI. All dynamic output is escaped here. */
+class AdminViews
+{
+    public static function layout(string $title, string $active, string $content, bool $loggedIn): string
+    {
+        $nav = '';
+        if ($loggedIn) {
+            $links = [
+                '/admin/settings' => 'Settings',
+                '/admin/keys' => 'API Keys',
+                '/admin/messages' => 'Messages',
+            ];
+            foreach ($links as $href => $label) {
+                $url = AdminApp::url($href);
+                $class = $active === $href ? ' class="active"' : '';
+                $nav .= "<a href=\"{$url}\"{$class}>{$label}</a>";
+            }
+            $nav .= '<form method="post" action="' . AdminApp::url('/admin/logout') . '" class="logout">'
+                . '<button type="submit">Log out</button></form>';
+        }
+
+        return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">"
+            . "\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            . "\n<title>" . e($title) . " — JE Lite SMS API</title>\n" . self::css()
+            . "</head>\n<body>\n<header><strong>JE Lite SMS Admin</strong><nav>{$nav}</nav></header>\n"
+            . "<main>{$content}</main>\n</body>\n</html>\n";
+    }
+
+    public static function loginPage(string $csrf, ?string $error): string
+    {
+        $err = $error !== null ? "<p class=\"error\">" . e($error) . "</p>" : '';
+        $content = "<h1>Admin log in</h1>{$err}"
+            . '<form method="post" action="' . AdminApp::url('/admin/login') . '" class="card narrow">'
+            . '<input type="hidden" name="csrf" value="' . e($csrf) . '">'
+            . '<label>Username<input name="username" autofocus required></label>'
+            . '<label>Password<input name="password" type="password" required></label>'
+            . '<button type="submit">Log in</button></form>';
+        return self::layout('Log in', '', $content, false);
+    }
+
+    /**
+     * @param array<string,array{label:string,value:string,type:string,help?:string}> $fields
+     */
+    public static function settingsPage(string $csrf, array $fields, ?string $flash): string
+    {
+        $flashHtml = $flash !== null ? "<p class=\"ok\">" . e($flash) . "</p>" : '';
+        $rows = '';
+        foreach ($fields as $name => $f) {
+            $help = isset($f['help']) ? "<small>" . e($f['help']) . "</small>" : '';
+            $rows .= "<label>" . e($f['label'])
+                . "<input name=\"" . e($name) . "\" type=\"{$f['type']}\" value=\"" . e($f['value']) . "\">"
+                . "{$help}</label>";
+        }
+        $content = "<h1>Settings</h1>{$flashHtml}<p class=\"hint\">Values saved here override <code>.env</code>. "
+            . "Leave the password blank to keep the current one.</p>"
+            . '<form method="post" action="' . AdminApp::url('/admin/settings') . '" class="card">'
+            . '<input type="hidden" name="csrf" value="' . e($csrf) . '">' . $rows
+            . '<button type="submit">Save settings</button></form>';
+        return self::layout('Settings', '/admin/settings', $content, true);
+    }
+
+    /**
+     * @param list<array> $keys
+     */
+    public static function keysPage(string $csrf, array $keys, ?string $createdKey): string
+    {
+        $flash = $createdKey !== null
+            ? "<p class=\"ok\">New key created — copy it now, it will not be shown again:<br><code>" . e($createdKey) . "</code></p>"
+            : '';
+        $rows = '';
+        foreach ($keys as $k) {
+            $status = $k['active'] ? 'active' : 'revoked';
+            $revoke = $k['active']
+                ? '<form method="post" action="' . AdminApp::url('/admin/keys/revoke') . '">'
+                . '<input type="hidden" name="csrf" value="' . e($csrf) . '">'
+                . '<input type="hidden" name="id" value="' . (int) $k['id'] . '">'
+                . '<button type="submit" class="danger">Revoke</button></form>'
+                : ($k['revoked_at'] ? 'revoked ' . e((string) $k['revoked_at']) : '');
+            $rows .= '<tr><td>' . (int) $k['id'] . '</td><td>' . e((string) $k['name']) . '</td><td><code>'
+                . e((string) $k['key_prefix']) . '…</code></td><td>' . $status . '</td><td>'
+                . (int) $k['rate_limit_per_minute'] . '/min</td><td>' . e((string) $k['created_at'])
+                . '</td><td>' . $revoke . '</td></tr>';
+        }
+        $content = "<h1>API Keys</h1>{$flash}"
+            . '<form method="post" action="' . AdminApp::url('/admin/keys/create') . '" class="card narrow">'
+            . '<input type="hidden" name="csrf" value="' . e($csrf) . '">'
+            . '<label>Consumer name<input name="name" required placeholder="e.g. HRMIS"></label>'
+            . '<label>Rate limit / minute<input name="rate" type="number" value="30" min="1"></label>'
+            . '<button type="submit">Create key</button></form>'
+            . '<table><thead><tr><th>ID</th><th>Name</th><th>Prefix</th><th>Status</th><th>Rate</th>'
+            . '<th>Created</th><th></th></tr></thead><tbody>' . $rows . '</tbody></table>';
+        return self::layout('API Keys', '/admin/keys', $content, true);
+    }
+
+    /**
+     * @param list<array> $rows
+     */
+    public static function messagesPage(array $rows): string
+    {
+        $body = '';
+        foreach ($rows as $m) {
+            $err = $m['error'] !== null ? '<div class="error">' . e((string) $m['error']) . '</div>' : '';
+            $body .= '<tr><td>' . (int) $m['id'] . '</td><td>' . e((string) $m['key_name']) . '</td><td>'
+                . e((string) $m['to_e164']) . '</td><td>' . e(mb_substr((string) $m['body'], 0, 40))
+                . '</td><td><span class="status s-' . e((string) $m['status']) . '">' . e((string) $m['status'])
+                . '</span></td><td>' . (int) $m['attempts'] . '</td><td>' . e((string) $m['created_at'])
+                . '</td><td>' . e((string) ($m['sent_at'] ?? '')) . $err . '</td></tr>';
+        }
+        $content = '<h1>Messages</h1><p class="hint">Most recent 50 queue rows (read-only).</p>'
+            . '<table><thead><tr><th>ID</th><th>Key</th><th>To</th><th>Body</th><th>Status</th>'
+            . '<th>Attempts</th><th>Created</th><th>Sent / Error</th></tr></thead><tbody>'
+            . ($body !== '' ? $body : '<tr><td colspan="8">No messages yet.</td></tr>')
+            . '</tbody></table>';
+        return self::layout('Messages', '/admin/messages', $content, true);
+    }
+
+    private static function css(): string
+    {
+        return <<<'CSS'
+<style>
+:root { font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f4f6f8; color: #1c2733; }
+header { display: flex; align-items: center; gap: 24px; padding: 10px 20px; background: #10314f; color: #fff; }
+header nav { display: flex; gap: 12px; align-items: center; flex: 1; }
+header a { color: #cfe0ef; text-decoration: none; padding: 4px 8px; border-radius: 4px; }
+header a.active, header a:hover { background: #1d4a75; color: #fff; }
+.logout button { background: transparent; border: 1px solid #5b7d9e; color: #cfe0ef; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+.card { background: #fff; border: 1px solid #dbe2e8; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; display: grid; gap: 12px; }
+.card.narrow { max-width: 420px; }
+label { display: grid; gap: 4px; font-size: 14px; font-weight: 600; }
+input { padding: 7px 9px; border: 1px solid #b9c4cd; border-radius: 5px; font-size: 14px; width: 100%; box-sizing: border-box; }
+button { background: #1660a8; color: #fff; border: 0; border-radius: 5px; padding: 8px 14px; font-size: 14px; cursor: pointer; justify-self: start; }
+button.danger { background: #a83232; }
+small { font-weight: 400; color: #5b6b7a; }
+.ok { background: #e5f5e8; border: 1px solid #9fd4ab; padding: 10px 12px; border-radius: 6px; }
+.error { background: #fbeaea; border: 1px solid #e0a3a3; padding: 10px 12px; border-radius: 6px; color: #7d2020; }
+.hint { color: #5b6b7a; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #dbe2e8; border-radius: 8px; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e8edf1; vertical-align: top; }
+th { background: #eef2f6; }
+.status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.s-sent { background: #e5f5e8; } .s-queued { background: #fdf3dc; } .s-sending { background: #e3eefb; } .s-failed { background: #fbeaea; }
+code { background: #eef2f6; padding: 2px 5px; border-radius: 4px; word-break: break-all; }
+form.logout { margin: 0; }
+</style>
+CSS;
+    }
+}

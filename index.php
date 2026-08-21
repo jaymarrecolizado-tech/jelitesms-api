@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/src/autoload.php';
 
+use Jelite\AdminApp;
 use Jelite\App;
+
+session_start();
 
 // Derive the install base from the filesystem (SCRIPT_NAME is unreliable
 // under per-directory mod_rewrite, where it keeps the original request path).
@@ -34,6 +37,19 @@ if (isset($_SERVER['CONTENT_TYPE'])) {
 // Restore Authorization when mod_rewrite moved it into the environment.
 if (!isset($headers['authorization']) && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
     $headers['authorization'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+}
+
+if ($path === '/admin' || str_starts_with($path, '/admin/')) {
+    AdminApp::$basePath = $base;
+    $result = AdminApp::fromConfig()->handle($_SESSION, $_SERVER['REQUEST_METHOD'], $path, $_POST);
+
+    http_response_code($result['status']);
+    if (isset($result['location'])) {
+        header('Location: ' . $result['location']);
+    }
+    header('Content-Type: text/html; charset=utf-8');
+    echo $result['body'];
+    exit;
 }
 
 $result = App::fromConfig()->handle($_SERVER['REQUEST_METHOD'], $path, $headers, file_get_contents('php://input') ?: null);

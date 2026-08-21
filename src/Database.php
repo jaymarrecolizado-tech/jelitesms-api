@@ -22,6 +22,10 @@ class Database
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
         self::$currentDb = $key;
+
+        // Admin UI overrides ride on top of env config once a connection exists.
+        Config::loadDbOverrides(self::$pdo);
+
         return self::$pdo;
     }
 

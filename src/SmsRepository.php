@@ -91,6 +91,22 @@ class SmsRepository
         return $select->fetchAll();
     }
 
+    /**
+     * Recent queue rows with consumer key names (admin Messages page).
+     *
+     * @return list<array>
+     */
+    public function recentWithKeyNames(int $limit = 50): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT m.*, k.name AS key_name FROM sms_messages m
+             JOIN api_keys k ON k.id = m.api_key_id
+             ORDER BY m.id DESC LIMIT ?'
+        );
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    }
+
     public function markSent(int $id, ?string $gatewayMessageId): void
     {
         $stmt = $this->db->prepare(

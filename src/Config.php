@@ -5,6 +5,21 @@ namespace Jelite;
 class Config
 {
     private static ?array $values = null;
+    private static ?array $overrides = null;
+
+    /** Keys the Admin UI may override from the app_settings table. */
+    private const OVERRIDABLE = [
+        'APP_URL',
+        'SMS_GATEWAY_URL',
+        'SMS_GATEWAY_USERNAME',
+        'SMS_GATEWAY_PASSWORD',
+        'SMS_API_PATH',
+        'SMS_TIMEOUT_SECONDS',
+        'SMS_DEFAULT_COUNTRY_CODE',
+        'SMS_MAX_MESSAGE_LENGTH',
+        'SMS_MAX_ATTEMPTS',
+        'WORKER_BATCH_SIZE',
+    ];
 
     public static function load(string $envFile): void
     {
@@ -34,7 +49,34 @@ class Config
         if (self::$values === null) {
             self::load(dirname(__DIR__) . '/.env');
         }
+
+        // DB override (Admin UI) wins for allowlisted keys; never for DB_*/ADMIN_*.
+        if (self::$overrides !== null && isset(self::$overrides[$name]) && self::$overrides[$name] !== '') {
+            return self::$overrides[$name];
+        }
+
         return isset(self::$values[$name]) && self::$values[$name] !== '' ? self::$values[$name] : $default;
+    }
+
+    /**
+     * Load allowlisted overrides from app_settings. Safe to call repeatedly;
+     * uses the given PDO directly so it cannot recurse into Database::pdo().
+     */
+    public static function loadDbOverrides(\PDO $pdo): void
+    {
+        try {
+            $rows = $pdo->query('SELECT setting_key, setting_value FROM app_settings')->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $overrides = [];
+            foreach ($rows ?: [] as $key => $value) {
+                if (in_array($key, self::OVERRIDABLE, true) && $value !== null && $value !== '') {
+                    $overrides[$key] = (string) $value;
+                }
+            }
+            self::$overrides = $overrides;
+        } catch (\Throwable) {
+            // Table missing (pre-migration) or DB hiccup → fall back to env only.
+            self::$overrides = [];
+        }
     }
 
     public static function int(string $name, int $default): int

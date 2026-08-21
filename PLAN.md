@@ -6,7 +6,7 @@
 
 > **Status: Phase 1–3 COMPLETE, Phase 4 mostly complete.** All items marked ✅ are implemented,
 > tested (63/63 passing) and pushed to `github.com/jaymarrecolizado-tech/jelitesms-api`.
-> Remaining items are marked ⬜.
+> Remaining items (including **Phase 5 — Admin UI**) are marked ⬜.
 
 ---
 
@@ -122,24 +122,139 @@ Tables (in `database/schema.sql`, applied by `bin/setup.php`):
 2. ⬜ Optional `openapi.yaml`
 3. ✅ Tests (`tests/run.php`, dependency-free runner): auth, validation, enqueue/status/idempotency/rate-limit, gateway contract, worker drain — **63/63 passing**; gateway mocked only in tests
 
+### Phase 5 — Admin UI (config + keys) — ⬜ PLANNED
+
+Browser interface so operators can change gateway/SMS settings and manage API keys without hand-editing `.env` for every tweak. Same PHP project + HTML/CSS/JS (no separate React admin SPA).
+
+#### Locked design choices
+
+| Choice | Decision |
+|--------|----------|
+| URLs | `/admin` (login), `/admin/settings`, `/admin/keys`, `/admin/messages` |
+| Auth | Session cookie; bootstrap only in `.env`: `ADMIN_USER`, `ADMIN_PASSWORD` |
+| Storage | MySQL `app_settings` (not JSON files) |
+| UI can change | Gateway + SMS tunables + API keys |
+| Stays in `.env` only | `APP_ENV`, `DB_*`, `ADMIN_*` (not editable in UI) |
+
+#### Local URL (after build)
+
+`http://localhost/projects/jelite_sms_api/admin`
+
+#### Settings page (editable)
+
+- `SMS_GATEWAY_URL`
+- `SMS_GATEWAY_USERNAME`
+- `SMS_GATEWAY_PASSWORD` (write-only / masked; blank = leave unchanged)
+- `SMS_API_PATH`
+- `SMS_TIMEOUT_SECONDS`
+- `SMS_DEFAULT_COUNTRY_CODE`
+- `SMS_MAX_MESSAGE_LENGTH`
+- `SMS_MAX_ATTEMPTS`
+- `WORKER_BATCH_SIZE`
+- `APP_URL`
+
+#### API Keys page
+
+- Create / list / revoke (same capability as `bin/manage-keys.php`)
+- Show plaintext key **once** on create; store hash only
+
+#### Messages page (read-only)
+
+- Recent queue rows: id, to, status, attempts, error, timestamps
+
+#### Config resolution order
+
+1. Row in `app_settings` (if present and non-empty)  
+2. Else `.env` / process env  
+3. Else code default  
+
+`Config::get()` will apply DB overrides only for an allowlisted set of keys.
+
+#### Schema addition
+
+```sql
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key VARCHAR(64) PRIMARY KEY,
+  setting_value TEXT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+#### Security rules
+
+- Admin routes require login; consumer Bearer keys do **not** grant admin.
+- Never show full gateway password after save (placeholder only).
+- CSRF token on admin POST forms.
+- React/SPA must never call `/admin` or hold SMS API / gateway secrets.
+
+#### Implementation touch list
+
+- `database/schema.sql` — `app_settings`
+- `src/SettingsRepository.php` + extend `src/Config.php`
+- `src/AdminAuth.php` + admin handlers / HTML views
+- Route `/admin/*` from `index.php` / `App.php` (HTML for admin, JSON for `/api/v1/*`)
+- `.env.example` — `ADMIN_USER`, `ADMIN_PASSWORD`
+- Tests: settings override, admin auth gate, key create/revoke via admin
+- `README.md` — how to open `/admin`
+
+#### Build order
+
+1. Schema + SettingsRepository + Config override  
+2. Admin session login  
+3. Settings form  
+4. Keys + Messages pages  
+5. Tests + README  
+
+---
+
+### Phase 6 — Hostinger deploy (consumer apps already on VPS) — ⬜ PLANNED
+
+Consumer apps already live on **Hostinger VPS KVM 2**. Deploy this API on the **same VPS**. The physical phone uses **sms-gate.app public cloud** (Hostinger cannot reach a phone LAN IP).
+
+```mermaid
+flowchart LR
+  Apps[Laravel_ReactBE_PHP_on_Hostinger]
+  SmsApi[jelite_sms_api_on_same_VPS]
+  Queue[(MySQL_sms_messages)]
+  Worker[cron_worker.php]
+  Cloud[api.sms-gate.app]
+  Phone[Android_phone_SIM]
+
+  Apps -->|"HTTPS Bearer key"| SmsApi
+  SmsApi -->|enqueue| Queue
+  Worker -->|drain| Queue
+  Worker -->|"HTTPS Basic auth"| Cloud
+  Cloud -->|push_to_device| Phone
+```
+
+1. Phone: Android SMS Gateway in **cloud** mode; credentials via Admin → Settings (or `.env`).
+2. Upload project to Hostinger (subdomain preferred, e.g. `https://sms-api.yourdomain.com`).
+3. `APP_ENV=prod`, MySQL, `bin/setup.php`, cron every minute for `bin/worker.php`.
+4. One API key per consumer app; each app’s **server** `.env` gets `SMS_API_URL` + `SMS_API_KEY`.
+5. React browser never holds the key — only backends call this API.
+
+Do **not** set `SMS_GATEWAY_URL` to `http://192.168.x.x:8080` on Hostinger.
+
+---
+
 ### Remaining (not yet built)
 
-- ⬜ Fill real gateway credentials in `.env` and verify a live SMS delivery end-to-end
-- ⬜ Schedule `bin/worker.php` via cron / Windows Task Scheduler (currently manual runs only)
-- ⬜ Create the `_prod` database when deploying beyond this machine
-- ⬜ Issue dedicated API keys per consumer (HRMIS, Laravel app, etc.) — Playground/Smoke keys exist for local testing only
+- ⬜ **Phase 5 — Admin UI** (see above)
+- ⬜ Fill gateway credentials (`.env` or Admin Settings) and verify live SMS end-to-end
+- ⬜ Schedule `bin/worker.php` via cron / Windows Task Scheduler (local) and Hostinger cron (prod)
+- ⬜ **Phase 6 — Hostinger deploy** + `_prod` database
+- ⬜ Issue dedicated API keys per consumer (HRMIS, Laravel app, etc.)
 - ⬜ Optional: `openapi.yaml`
 
 ---
 
-## Suggested env vars — ✅ all supported (.env / .env.example)
+## Suggested env vars — ✅ core supported; ⬜ ADMIN_* with Phase 5
 
 ```
 APP_URL=http://localhost/projects/jelite_sms_api
 APP_ENV=dev
 
 DB_HOST=127.0.0.1
-DB_NAME=jelite_sms_api_dev
 DB_USER=root
 DB_PASS=
 
@@ -150,8 +265,15 @@ SMS_API_PATH=/3rdparty/v1/messages
 SMS_TIMEOUT_SECONDS=15
 SMS_DEFAULT_COUNTRY_CODE=63
 SMS_MAX_MESSAGE_LENGTH=320
+SMS_MAX_ATTEMPTS=3
+WORKER_BATCH_SIZE=20
+
+# Phase 5 — admin bootstrap (not editable in UI)
+ADMIN_USER=admin
+ADMIN_PASSWORD=
 ```
 
+DB name is derived as `jelite_sms_api_{APP_ENV}` (no `DB_NAME` required).  
 Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/message`.
 
 ---
@@ -183,4 +305,4 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
 2. New **Agent** chat
 3. Paste the contents of [`NEW_CHAT_PROMPT.md`](NEW_CHAT_PROMPT.md)
-4. Say: implement Phase 1 end-to-end per `PLAN.md`
+4. Say: implement **Phase 5 Admin UI** end-to-end per `PLAN.md` (or continue Hostinger Phase 6 when ready)

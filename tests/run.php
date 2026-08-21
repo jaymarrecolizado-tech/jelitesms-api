@@ -77,6 +77,7 @@ require __DIR__ . '/SendValidationTest.php';
 require __DIR__ . '/EnqueueStatusTest.php';
 require __DIR__ . '/GatewayClientTest.php';
 require __DIR__ . '/WorkerDrainTest.php';
+require __DIR__ . '/AdminTest.php';
 
 echo "\n{$passes} passed, {$failures} failed\n";
 exit($failures === 0 ? 0 : 1);
