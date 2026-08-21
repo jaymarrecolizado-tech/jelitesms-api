@@ -1,65 +1,100 @@
 # Deploy / Portability Runbook (OPS / OWNER ONLY)
 
-**Not for consumers.** Do not link this from Admin → Docs. Keep this file for the project owner when doing Phase 6 Hostinger deploy.
+**Not for consumers.** Do not link this from Admin → Docs.
 
 One codebase runs everywhere — only environment, database, and scheduling differ.
-Local XAMPP today; Hostinger VPS later (Phase 6). Nothing in the code changes on upload.
+This page carries the concrete values for the live Hostinger deployment of
+`jelitesmsapi.dictr2.cloud`.
 
-## What differs per environment
+## Target host
 
-| Setting | Local XAMPP (now) | Hostinger VPS (later) |
-|---------|-------------------|------------------------|
-| `APP_URL` | `http://localhost/projects/jelite_sms_api` | `https://sms-api.yourdomain.com` |
-| `APP_ENV` | `dev` | `prod` (DB becomes `jelite_sms_api_prod`) |
-| `DB_*` | local MySQL (root) | Hostinger MySQL credentials |
-| Gateway mode | cloud or LAN phone | **cloud only** (`https://api.sms-gate.app`) |
-| Worker schedule | Windows Task Scheduler (`bin/register-worker-task.ps1`) | cron (snippet below) |
-| Admin UI | `/admin` under install base | same paths under new base URL |
+| Item | Value |
+|------|-------|
+| Domain | `https://jelitesmsapi.dictr2.cloud` |
+| Site user | `dictr2-jelitesmsapi` |
+| IP | `187.77.150.203` |
+| Docroot | `/home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html` (confirm in File Manager) |
+| Gateway | **Cloud only** — `https://api.sms-gate.app` (VPS cannot reach a phone LAN IP) |
 
-## Upload checklist (when Phase 6 starts)
+## Build + upload
 
-1. **Never commit or upload `.env`.** Upload the repo as-is; create a fresh `.env` on the server from `.env.example`.
-2. Set on the server `.env`:
-   - `APP_ENV=prod`
-   - `APP_URL=https://sms-api.yourdomain.com`
-   - Hostinger `DB_HOST/DB_USER/DB_PASS`
-   - `SMS_GATEWAY_URL=https://api.sms-gate.app`, `SMS_API_PATH=/3rdparty/v1/messages`
-   - New `ADMIN_USER` / `ADMIN_PASSWORD` (do not reuse local ones)
-3. Create the schema: `php bin/setup.php` (creates `jelite_sms_api_prod` + tables).
-4. Log into `/admin`, enter gateway credentials in **Settings** (or `.env`), and verify **Test → Check configuration**.
-5. Create fresh API keys per consumer app (**Admin → API Keys**). Do not migrate local keys.
-6. Point each consumer app's server-side config at the new base URL + key (see [CONSUMERS.md](CONSUMERS.md)).
-7. Schedule the worker (cron snippet below) and confirm messages flow.
+1. Rebuild staging from the repo root:
 
-## Worker scheduling
+   ```
+   C:\xampp\php\php.exe bin\export-prod.php
+   ```
 
-### Local Windows (Task Scheduler)
+2. SFTP-upload the **contents** of `prod/jelite_sms_api/` into the docroot above
+   (overwrite existing files on re-deploy). The package never contains `.env`,
+   tests, examples, or ops docs.
+
+3. Create `.env` on the server from `.env.example`:
+
+   ```
+   APP_URL=https://jelitesmsapi.dictr2.cloud
+   APP_ENV=prod
+   DB_HOST=127.0.0.1
+   DB_USER=<hpanel_mysql_user>
+   DB_PASS=<hpanel_mysql_password>
+   # DB_NAME=<full_panel_db_name>   # only if panel name != jelite_sms_api_prod
+   SMS_GATEWAY_URL=https://api.sms-gate.app
+   SMS_API_PATH=/3rdparty/v1/messages
+   ADMIN_USER=admin
+   ADMIN_PASSWORD=<new_strong_password>
+   ```
+   chmod 600 .env
+
+   Never reuse local dev/admin credentials. Create the MySQL DB (+user) in
+   hPanel first; note its exact (prefixed) name and set `DB_NAME` if it differs
+   from `jelite_sms_api_prod`.
+
+4. Permissions, schema, cron:
+
+   ```bash
+   bash set-permissions.sh ~/domains/jelitesmsapi.dictr2.cloud/public_html
+   cd ~/domains/jelitesmsapi.dictr2.cloud/public_html && php bin/setup.php
+   ```
+
+   Cron (hPanel → Cron Jobs), every minute:
+
+   ```
+   * * * * * php /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/bin/worker.php >> /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/storage/worker.log 2>&1
+   * * * * * php /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/bin/sync-delivery.php >> /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/storage/sync.log 2>&1
+   ```
+
+   (`bin/setup.php` applies `database/schema.sql` + migrations into the prod DB;
+   it does not attempt `CREATE DATABASE` when `DB_NAME` is set.)
+
+5. Go live:
+
+   - Log into `/admin` with the new ADMIN_* creds.
+   - Admin → Settings: cloud gateway username/password (from the Android app). Save.
+   - Admin → Test → *Check configuration*: database up + gateway reachable.
+   - Admin → API Keys: create one fresh key per consumer app (do not migrate local keys).
+   - Point each consumer app's server-side `SMS_API_URL` / `SMS_API_KEY` at this base URL.
+
+## Post-deploy verification
+
+- [ ] `curl https://jelitesmsapi.dictr2.cloud/api/v1/health` → `200`, gateway reachable
+- [ ] `.env`, `tests/`, `docs/ops/`, `storage/` not web-accessible (403/404)
+- [ ] Admin login works over HTTPS only
+- [ ] Test send via Admin → Test reaches a real phone
+- [ ] Message transitions `queued → sent → delivered` within ~2 minutes (cron running)
+- [ ] Consumer apps switched to the new base URL + keys
+
+## Local Windows scheduling (dev)
 
 ```
 powershell -ExecutionPolicy Bypass -File bin\register-worker-task.ps1
 ```
 
-Registers "JE Lite SMS Worker" running every minute:
-
-```
-C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
-```
-
-Re-run the script after moving the project folder. Remove with
+Registers "JE Lite SMS Worker" every minute. Remove with
 `Unregister-ScheduledTask -TaskName "JE Lite SMS Worker" -Confirm:$false`.
-
-### Linux / Hostinger (cron)
-
-```
-* * * * * php /path/to/jelite_sms_api/bin/worker.php >> /path/to/jelite_sms_api/worker.log 2>&1
-* * * * * php /path/to/jelite_sms_api/bin/sync-delivery.php >> /path/to/jelite_sms_api/sync.log 2>&1
-```
-
-`bin/sync-delivery.php` polls the gateway for delivery states (`delivered` / terminal `failed`) of already-sent messages; the worker also runs it after each drain, so a separate schedule is optional but recommended. Ensure log files are writable by the PHP user and not web-accessible (or write outside the docroot).
+Re-run after moving the project folder.
 
 ## Rules that hold everywhere
 
-- `.env` never leaves the machine; only `.env.example` is in git.
+- `.env` never leaves the machine; only `.env.example` ships/uploaded.
 - API keys are stored hashed; plaintext shown once at creation.
 - React/browser code never holds the Bearer key — backends only.
-- On Hostinger, gateway must be the public cloud; a LAN phone IP is unreachable from the VPS.
+- On Hostinger the gateway must be the public cloud; LAN phone IPs are unreachable.

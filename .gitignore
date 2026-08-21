@@ -2,3 +2,7 @@
 vendor/
 *.log
 NEW_CHAT_PROMPT.md
+
+
+prod/jelite_sms_api/
+prod/**/.env

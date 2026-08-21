@@ -4,6 +4,12 @@ RewriteEngine On
 RewriteCond %{HTTP:Authorization} .
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
+# Never expose secrets, internals, or ops material (app root may be the docroot).
+RewriteRule ^\.env - [F,L]
+RewriteRule ^\.git - [F,L]
+RewriteRule ^(dist|tests|docs/ops)(/|$) - [F,L]
+RewriteRule (^|/)\. - [F,L]
+
 # Serve existing files/directories directly.
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d

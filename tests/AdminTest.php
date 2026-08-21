@@ -237,11 +237,17 @@ foreach ([['page' => 'not-a-chapter'], ['page' => '../../.env'], ['doc' => 'depl
 
 // Ops deploy runbook must never appear in Admin Docs.
 $opsMd = (string) file_get_contents(dirname(__DIR__) . '/docs/ops/DEPLOY.md');
-$marker = 'Hostinger VPS later';
+$marker = 'jelitesmsapi.dictr2.cloud';
 check(str_contains($opsMd, $marker), 'ops runbook still on disk (sanity)');
 $r = $admin->handle($sess, 'GET', '/admin/docs', [], ['page' => 'welcome']);
-check(!str_contains($r['body'], $marker), 'ops upload checklist not in admin docs');
+check(!str_contains($r['body'], $marker), 'ops host details not in admin docs');
 check(!str_contains($r['body'], 'docs/ops/DEPLOY.md'), 'no link to ops runbook in admin docs');
+
+// .htaccess must block sensitive paths when the app root is the web docroot.
+$htaccess = (string) file_get_contents(dirname(__DIR__) . '/.htaccess');
+foreach (['^\.env', '^\.git', '(dist|tests|docs/ops)'] as $deny) {
+    check(str_contains($htaccess, $deny), ".htaccess denies {$deny}");
+}
 
 section('Markdown renderer');
 

@@ -73,6 +73,7 @@ $plaintextKey = $keyRepo->create('Test Consumer', 30)['key'];
 $auth = ['authorization' => 'Bearer ' . $plaintextKey];
 
 require __DIR__ . '/PhoneTest.php';
+require __DIR__ . '/ConfigDbNameTest.php';
 require __DIR__ . '/AuthTest.php';
 require __DIR__ . '/SendValidationTest.php';
 require __DIR__ . '/EnqueueStatusTest.php';
@@ -81,6 +82,7 @@ require __DIR__ . '/WorkerDrainTest.php';
 require __DIR__ . '/DeliverySyncTest.php';
 require __DIR__ . '/AdminTest.php';
 require __DIR__ . '/ReportsTest.php';
+require __DIR__ . '/ExportProdTest.php';
 
 echo "\n{$passes} passed, {$failures} failed\n";
 exit($failures === 0 ? 0 : 1);

@@ -90,8 +90,17 @@ class Config
         return self::get('APP_ENV', 'dev');
     }
 
+    /**
+     * Database name for the current environment. Hostinger (and similar
+     * hosts) force a username prefix on DB names, so an explicit `DB_NAME`
+     * always wins; otherwise the name is derived from APP_ENV.
+     */
     public static function dbName(): string
     {
+        $explicit = self::get('DB_NAME');
+        if ($explicit !== '') {
+            return $explicit;
+        }
         return 'jelite_sms_api_' . self::env();
     }
 }

@@ -4,23 +4,25 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5.9 COMPLETE** (API, admin incl. Docs tutorial + Reports, worker, delivery sync).  
-> **Next for coding agents: nothing mandatory** — see the Recommended backlog; only act if the user asks.  
-> **Phase 6 Hostinger deploy: SKIPPED.** Ops deploy notes live in [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (owner-only — **not** shown in Admin → Docs).
+> **Status: Phase 1–5.9 COMPLETE.** **Phase 6 (Hostinger deploy) is NEXT** — stage under `prod/`, then upload to `jelitesmsapi.dictr2.cloud`.  
+> Ops runbook: [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (owner-only — **not** shown in Admin → Docs).  
+> Recommended backlog remains optional and separate from Phase 6.
 
 ---
 
 ## For the next coding agent (read this first)
 
 **Do not** put Hostinger/ops deploy runbooks in Admin → Docs (consumers must not see them).  
-**Do not** rewrite the whole API. **Do not** commit Laravel `vendor/` or `node_modules`.
+**Do not** rewrite the whole API. **Do not** commit Laravel `vendor/` or `node_modules`.  
+**Do not** commit or upload local `.env` / secrets. Upload only from `prod/jelite_sms_api/`.
 
-**Implement next: nothing** — Phase 5.9 (Tutorial Docs) is complete. Only act on the Recommended backlog or if the user un-skips Phase 6.
+**Implement next: Phase 6** — see **Phase 6 — Hostinger deploy** below. Do not invent DB/admin passwords in git.
 
 | Already on disk | Notes |
 |-----------------|--------|
-| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | Current Admin → Docs content (reference-style; to be replaced by guide pages) |
+| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | Consumer reference (Admin Docs uses `docs/guide/*`) |
 | [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) | **Ops only** (you / Phase 6) — never render in Admin Docs |
+| `prod/` | Deploy staging: `prod/jelite_sms_api/` = upload package (multi-app ready) |
 | Admin Docs | Consumer guide only (deploy tab removed) |
 | Admin | Settings, Keys, Messages, Usage, Reports, Test, Docs |
 
@@ -484,7 +486,6 @@ Without sync first, Reports would only duplicate **Usage**.
 - Messages filters / requeue UI  
 - Bulk send, scheduled send  
 - OpenAPI  
-- Phase 6 Hostinger  
 
 ---
 
@@ -502,7 +503,7 @@ Prioritized ideas for later phases (do not implement unless user asks):
 | Medium | Scheduled send (`send_at`) | Worker claims due rows only |
 | Lower | Key scopes / admin password UI / audit log / IP allowlist for `/admin` | |
 | Optional | `openapi.yaml` | |
-| Deferred | Phase 6 Hostinger, inbound SMS, DICT SSO, LOKA migration | |
+| Deferred | inbound SMS, DICT SSO, LOKA migration | |
 
 ---
 
@@ -553,11 +554,118 @@ Prioritized ideas for later phases (do not implement unless user asks):
 
 ---
 
-### Phase 6 — Hostinger deploy — SKIPPED (for now)
+### Phase 6 — Hostinger deploy via `prod/` — NEXT
 
-Do **not** implement until the user explicitly asks. Owner runbook: [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (**not** Admin Docs).
+**Status:** Planned / in progress. Owner runbook: [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md) (**not** Admin Docs).
 
-When un-skipped: same VPS as consumer apps, cloud gateway only, cron for `bin/worker.php` + `bin/sync-delivery.php`, one key per app.
+**Goal:** Ship a deploy-ready package under `prod/`, upload only that package to Hostinger, configure prod `.env` + cron + permissions, smoke-test live API.
+
+#### Target host
+
+| Item | Value |
+|------|--------|
+| Domain | `jelitesmsapi.dictr2.cloud` |
+| Public URL | `https://jelitesmsapi.dictr2.cloud` |
+| Site user | `dictr2-jelitesmsapi` |
+| IP | `187.77.150.203` |
+| Likely docroot | `/home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html` |
+| Gateway | **Cloud only** — `https://api.sms-gate.app` (VPS cannot reach phone LAN IP) |
+
+#### Locked design — `prod/` staging folder
+
+Upload source of truth is **`prod/jelite_sms_api/`**, not the XAMPP working tree.
+
+```
+prod/
+  README.md                 # rebuild + upload + permissions
+  set-permissions.sh        # run on VPS after upload (Unix modes)
+  jelite_sms_api/           # THIS app — contents map 1:1 onto public_html
+    index.php
+    .htaccess
+    .env.example            # copy to .env on server; never ship .env
+    src/
+    bin/                    # setup, worker, sync-delivery, helpers (no Windows .ps1)
+    database/
+    docs/guide/
+    docs/CONSUMERS.md
+    storage/                # empty, writable logs; .gitkeep
+```
+
+- Multi-app ready: future Hostinger apps can sit as `prod/other_app/` beside this one.
+- **Include:** front controller, `.htaccess`, `.env.example`, `src/`, `database/`, needed `bin/*.php`, Admin Docs sources, empty `storage/`.
+- **Exclude:** local `.env`, `.git`, `tests/`, `examples/`, `PLAN.md`, `docs/ops/`, `bin/register-worker-task.ps1`, logs, agent scratch files.
+- Rebuild with `php bin/export-prod.php` before every upload (wipes/recreates `prod/jelite_sms_api/`).
+- Gitignore generated `prod/jelite_sms_api/` and any `prod/**/.env`; keep `prod/README.md` + `prod/set-permissions.sh` tracked.
+
+#### Permissions (applied on VPS)
+
+Windows cannot set real Hostinger modes. After upload, run `prod/set-permissions.sh` on the server:
+
+| Path | Mode |
+|------|------|
+| directories | `755` |
+| files | `644` |
+| `bin/*.php` | `755` |
+| `storage/` | `775` |
+| `.env` (created on server) | `600` |
+
+Owner stays the Hostinger site user (`dictr2-jelitesmsapi`) when uploading via that account.
+
+#### Repo / code tasks — ✅ done (code-side complete; live steps pending owner)
+
+1. ✅ Optional `DB_NAME` override in `src/Config.php` (Hostinger panel names are often prefixed); default remains `jelite_sms_api_{APP_ENV}`. Tests: `tests/ConfigDbNameTest.php`.
+2. ✅ Resilient `bin/setup.php` — skips `CREATE DATABASE` when `DB_NAME` is set, warns and continues if denied otherwise.
+3. ✅ `.env.example` with optional `DB_NAME` + prod notes.
+4. ✅ `bin/export-prod.php`, `prod/README.md`, `prod/set-permissions.sh` shipped (tests: `tests/ExportProdTest.php`).
+5. ✅ `docs/ops/DEPLOY.md` rewritten for this host: build `prod/` → upload → `.env` → permissions → `setup.php` → cron → smoke tests.
+6. ⬜ Mark phase DONE only after live smoke tests pass (owner runs the upload + verification below).
+
+Also: `.htaccess` now denies `.env`, `.git`, `dist|tests|docs/ops` and dotfiles when the app root is the web docroot (guarded by tests).
+
+#### Server `.env` (create on VPS only — never commit/upload local `.env`)
+
+```
+APP_URL=https://jelitesmsapi.dictr2.cloud
+APP_ENV=prod
+DB_HOST=127.0.0.1
+DB_USER=...
+DB_PASS=...
+# DB_NAME=...       # only if panel name ≠ jelite_sms_api_prod
+SMS_GATEWAY_URL=https://api.sms-gate.app
+SMS_API_PATH=/3rdparty/v1/messages
+ADMIN_USER=admin
+ADMIN_PASSWORD=...  # new prod password
+```
+
+Gateway credentials may be set in Admin → Settings after first login.
+
+#### Upload + ops checklist
+
+1. `php bin/export-prod.php` on the local machine.
+2. Upload **contents** of `prod/jelite_sms_api/` → Hostinger `public_html`.
+3. Create server `.env` from `.env.example`; run `bash set-permissions.sh`.
+4. `php bin/setup.php`.
+5. Cron every minute:
+
+```
+* * * * * php /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/bin/worker.php >> /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/storage/worker.log 2>&1
+* * * * * php /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/bin/sync-delivery.php >> /home/dictr2-jelitesmsapi/domains/jelitesmsapi.dictr2.cloud/public_html/storage/sync.log 2>&1
+```
+
+(Confirm absolute path with Hostinger File Manager / `pwd` if layout differs.)
+
+6. Admin → Settings (cloud gateway) → Test → create **fresh** API keys per consumer app → point each app’s server-side `SMS_API_URL` / `SMS_API_KEY` at this base URL.
+
+#### Done when
+
+- [x] `bin/export-prod.php` builds a clean `prod/jelite_sms_api/`
+- [x] Optional `DB_NAME` + resilient setup shipped
+- [x] `docs/ops/DEPLOY.md` filled for `jelitesmsapi.dictr2.cloud`
+- [ ] Contents of `prod/jelite_sms_api/` uploaded to `public_html` (owner, via SFTP)
+- [ ] Permissions script run; `.env` present; `php bin/setup.php` OK (owner)
+- [ ] Cron for worker + sync-delivery (owner)
+- [ ] `GET https://jelitesmsapi.dictr2.cloud/api/v1/health` OK (owner)
+- [ ] Admin Test + one real cloud SMS OK (owner)
 
 ---
 
@@ -581,9 +689,9 @@ Laravel / CodeIgniter / React BFFs; runnable samples in `examples/plain-php` and
 `examples/react-node-bff`; ops deploy content excluded — `docs/ops/DEPLOY.md` owner-only;
 204/204 tests passing).
 
-**Phase 6 — SKIPPED:**
+**Phase 6 — NEXT:**
 
-- Live Hostinger deploy (user deferred); see `docs/ops/DEPLOY.md` when ready
+- Stage under `prod/jelite_sms_api/` → upload to `jelitesmsapi.dictr2.cloud` (details above)
 
 **Later / optional (only if user asks):**
 
@@ -602,6 +710,7 @@ APP_ENV=dev
 DB_HOST=127.0.0.1
 DB_USER=root
 DB_PASS=
+# DB_NAME=                 # optional override (Hostinger panel name); default jelite_sms_api_{APP_ENV}
 
 SMS_GATEWAY_URL=https://api.sms-gate.app
 SMS_GATEWAY_USERNAME=
@@ -619,8 +728,9 @@ ADMIN_USER=admin
 ADMIN_PASSWORD=
 ```
 
-DB name is derived as `jelite_sms_api_{APP_ENV}` (no `DB_NAME` required).  
-Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/message`.
+DB name defaults to `jelite_sms_api_{APP_ENV}`; set `DB_NAME` when the Hostinger panel name differs.  
+Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/message`.  
+Prod: `APP_URL=https://jelitesmsapi.dictr2.cloud`, `APP_ENV=prod`, cloud gateway only.
 
 ---
 
@@ -642,7 +752,7 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 
 ## After Phase 1 ships
 
-- Prod API keys per consumer when Phase 6 is un-skipped; local keys anytime via Admin → API Keys.
+- Prod API keys per consumer when Phase 6 goes live (create on Hostinger Admin — do not reuse local keys).
 - Keep LOKA on its existing gateway until you choose to migrate (untouched).
 - SSO / Sign in with DICT stays on the parked plan outside this folder.
 
@@ -651,6 +761,6 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 ## How to start in Cursor (next agent)
 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
-2. Read **"For the next coding agent"** in this file — all planned phases (1–5.9) are complete
-3. Only act if the user asks for a Recommended-backlog item or un-skips **Phase 6** (Hostinger deploy — follow `docs/ops/DEPLOY.md`)
+2. Read **"For the next coding agent"** — Phases 1–5.9 are complete; **implement Phase 6**
+3. Follow **Phase 6 — Hostinger deploy via `prod/`** and [`docs/ops/DEPLOY.md`](docs/ops/DEPLOY.md)
 4. Only create a git commit if the user explicitly asks

@@ -12,12 +12,23 @@ use Jelite\Database;
 requireConfig();
 
 $dbName = Config::dbName();
-$server = Database::serverPdo();
-$server->exec(sprintf(
-    'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
-    str_replace('`', '', $dbName)
-));
-echo "Database ready: {$dbName}\n";
+
+if (Config::get('DB_NAME') !== '') {
+    // Managed hosts (e.g. Hostinger) create databases in their panel with a
+    // forced prefix — the database must already exist.
+    echo "Using existing database from DB_NAME: {$dbName}\n";
+} else {
+    try {
+        Database::serverPdo()->exec(sprintf(
+            'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+            str_replace('`', '', $dbName)
+        ));
+        echo "Database ready: {$dbName}\n";
+    } catch (\Throwable $e) {
+        // CREATE denied (managed hosting) → continue against the existing DB.
+        echo "Notice: could not create database ({$e->getMessage()}) — continuing with existing `{$dbName}`.\n";
+    }
+}
 
 $schema = file_get_contents(__DIR__ . '/../database/schema.sql');
 if ($schema === false) {
