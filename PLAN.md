@@ -4,9 +4,9 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–3 COMPLETE, Phase 4 mostly complete.** All items marked ✅ are implemented,
-> tested (63/63 passing) and pushed to `github.com/jaymarrecolizado-tech/jelitesms-api`.
-> Remaining items (including **Phase 5 — Admin UI**) are marked ⬜.
+> **Status: Phase 1–5 core COMPLETE; Test/Playground page still planned.** Items marked ✅ are
+> implemented. Remaining: **Phase 5 Test page** (config probe + send-as-consumer), live gateway
+> verification, Hostinger deploy (Phase 6), optional `openapi.yaml`.
 
 ---
 
@@ -122,7 +122,7 @@ Tables (in `database/schema.sql`, applied by `bin/setup.php`):
 2. ⬜ Optional `openapi.yaml`
 3. ✅ Tests (`tests/run.php`, dependency-free runner): auth, validation, enqueue/status/idempotency/rate-limit, gateway contract, worker drain — **63/63 passing**; gateway mocked only in tests
 
-### Phase 5 — Admin UI (config + keys) — ⬜ PLANNED
+### Phase 5 — Admin UI (config + keys) — ✅ core DONE; ⬜ Test/Playground still planned
 
 Browser interface so operators can change gateway/SMS settings and manage API keys without hand-editing `.env` for every tweak. Same PHP project + HTML/CSS/JS (no separate React admin SPA).
 
@@ -130,79 +130,108 @@ Browser interface so operators can change gateway/SMS settings and manage API ke
 
 | Choice | Decision |
 |--------|----------|
-| URLs | `/admin` (login), `/admin/settings`, `/admin/keys`, `/admin/messages` |
+| URLs | `/admin` (login), `/admin/settings`, `/admin/keys`, `/admin/messages`, **`/admin/test`** (planned) |
 | Auth | Session cookie; bootstrap only in `.env`: `ADMIN_USER`, `ADMIN_PASSWORD` |
 | Storage | MySQL `app_settings` (not JSON files) |
 | UI can change | Gateway + SMS tunables + API keys |
 | Stays in `.env` only | `APP_ENV`, `DB_*`, `ADMIN_*` (not editable in UI) |
 
-#### Local URL (after build)
+#### Local URL
 
 `http://localhost/projects/jelite_sms_api/admin`
 
-#### Settings page (editable)
+#### Settings page (editable) — ✅
 
-- `SMS_GATEWAY_URL`
-- `SMS_GATEWAY_USERNAME`
-- `SMS_GATEWAY_PASSWORD` (write-only / masked; blank = leave unchanged)
-- `SMS_API_PATH`
-- `SMS_TIMEOUT_SECONDS`
-- `SMS_DEFAULT_COUNTRY_CODE`
-- `SMS_MAX_MESSAGE_LENGTH`
-- `SMS_MAX_ATTEMPTS`
-- `WORKER_BATCH_SIZE`
-- `APP_URL`
+- `SMS_GATEWAY_URL`, `SMS_GATEWAY_USERNAME`, `SMS_GATEWAY_PASSWORD` (masked), `SMS_API_PATH`
+- `SMS_TIMEOUT_SECONDS`, `SMS_DEFAULT_COUNTRY_CODE`, `SMS_MAX_MESSAGE_LENGTH`
+- `SMS_MAX_ATTEMPTS`, `WORKER_BATCH_SIZE`, `APP_URL`
 
-#### API Keys page
+#### API Keys page — ✅
 
-- Create / list / revoke (same capability as `bin/manage-keys.php`)
-- Show plaintext key **once** on create; store hash only
+- Create / list / revoke; plaintext key shown **once** on create
 
-#### Messages page (read-only)
+#### Messages page (read-only) — ✅
 
 - Recent queue rows: id, to, status, attempts, error, timestamps
 
-#### Config resolution order
+#### Test / Playground page — ⬜ PLANNED (`/admin/test`)
+
+Operator page to **verify config** and **send a test SMS the same way consumer apps do** (Laravel, CI, React backends, other PHP), without leaving the admin UI or using curl.
+
+```mermaid
+flowchart LR
+  AdminTest[Admin_Test_page]
+  Health[Config_probe]
+  SendAs[Send_as_API_key]
+  ApiPath[Same_POST_send_path]
+  Queue[(sms_messages)]
+  Worker[Optional_run_worker]
+
+  AdminTest --> Health
+  AdminTest --> SendAs
+  SendAs --> ApiPath
+  ApiPath --> Queue
+  AdminTest --> Worker
+  Worker --> Queue
+```
+
+**A. Test config (no real SMS)**
+
+- Button: **Check configuration**
+- Runs the same checks as `GET /api/v1/health` (and related gateway probe): database up/down, gateway configured yes/no, gateway reachable/unreachable
+- Shows clear pass/fail in the UI (no secrets displayed)
+- Optional: show effective (resolved) non-secret settings: gateway URL, API path, country code, max length, timeouts — so you can confirm DB overrides vs `.env`
+
+**B. Send test SMS (as a consumer app)**
+
+- Purpose: simulate what happens when another app calls `POST /api/v1/sms/send` with a Bearer key
+- Form fields:
+  - **API key** — dropdown of active keys (by name / id / prefix); send is attributed to that consumer key (rate limit + ownership match production)
+  - **to** — phone (E.164 or local)
+  - **message** — text
+  - **client_ref** — optional idempotency ref
+  - **Run worker once after enqueue** — checkbox (local/Hostinger debugging so status can move past `queued` without waiting for cron)
+- Server uses the **same validation + enqueue path** as the public API (`App` send handler): same `202`/`200`/`422`/`429` JSON shape consumers get
+- After submit: show HTTP-style status + JSON body (`id`, `status`), link to **Messages**, and optional status refresh for that id
+- Does **not** require pasting the plaintext Bearer key (admin selects key by id; plaintext remains unrecoverable from DB)
+
+**C. Security / rules for Test page**
+
+- Still requires admin login + CSRF
+- Consumer Bearer keys cannot open `/admin/test`
+- Test sends count against the selected key’s rate limit (realistic)
+- Warn in UI: this can send a **real SMS** if gateway + worker are configured
+- React/SPA still never calls this page
+
+#### Config resolution order — ✅
 
 1. Row in `app_settings` (if present and non-empty)  
 2. Else `.env` / process env  
 3. Else code default  
 
-`Config::get()` will apply DB overrides only for an allowlisted set of keys.
+#### Schema — ✅ `app_settings` in `database/schema.sql`
 
-#### Schema addition
+#### Security rules — ✅ for existing pages; apply to Test page too
 
-```sql
-CREATE TABLE IF NOT EXISTS app_settings (
-  setting_key VARCHAR(64) PRIMARY KEY,
-  setting_value TEXT NULL,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
+- Admin routes require login; consumer Bearer keys do **not** grant admin
+- Never show full gateway password after save
+- CSRF on admin POSTs
+- React/SPA must never call `/admin` or hold SMS API / gateway secrets
 
-#### Security rules
+#### Implementation touch list for Test page (remaining)
 
-- Admin routes require login; consumer Bearer keys do **not** grant admin.
-- Never show full gateway password after save (placeholder only).
-- CSRF token on admin POST forms.
-- React/SPA must never call `/admin` or hold SMS API / gateway secrets.
+- Extend `AdminApp.php` / `AdminViews.php`: routes `GET|POST /admin/test`, nav link **Test**
+- Reuse `App` health + send logic (no duplicated validation)
+- Optional one-shot worker drain from admin (reuse `SmsRepository` + `SmsGateway`, same as `bin/worker.php`)
+- Tests in `tests/AdminTest.php` (or sibling): config probe, send-as-key enqueue, auth gate
+- `README.md` — document `/admin/test`
 
-#### Implementation touch list
+#### Build order (remaining)
 
-- `database/schema.sql` — `app_settings`
-- `src/SettingsRepository.php` + extend `src/Config.php`
-- `src/AdminAuth.php` + admin handlers / HTML views
-- Route `/admin/*` from `index.php` / `App.php` (HTML for admin, JSON for `/api/v1/*`)
-- `.env.example` — `ADMIN_USER`, `ADMIN_PASSWORD`
-- Tests: settings override, admin auth gate, key create/revoke via admin
-- `README.md` — how to open `/admin`
-
-#### Build order
-
-1. Schema + SettingsRepository + Config override  
-2. Admin session login  
-3. Settings form  
-4. Keys + Messages pages  
+1. `/admin/test` UI shell + nav  
+2. Config probe section  
+3. Send-as-consumer form + response panel  
+4. Optional “run worker once”  
 5. Tests + README  
 
 ---
@@ -239,16 +268,18 @@ Do **not** set `SMS_GATEWAY_URL` to `http://192.168.x.x:8080` on Hostinger.
 
 ### Remaining (not yet built)
 
-- ⬜ **Phase 5 — Admin UI** (see above)
-- ⬜ Fill gateway credentials (`.env` or Admin Settings) and verify live SMS end-to-end
+- ✅ Gateway credentials configured (via Admin Settings) and **live SMS verified end-to-end** (202 queued → worker → cloud `Pending` → device `Delivered` on real phone)
+- ⬜ Optional: delivery-state sync — poll gateway for `Sent`/`Delivered` states and update `sms_messages.status`
 - ⬜ Schedule `bin/worker.php` via cron / Windows Task Scheduler (local) and Hostinger cron (prod)
 - ⬜ **Phase 6 — Hostinger deploy** + `_prod` database
 - ⬜ Issue dedicated API keys per consumer (HRMIS, Laravel app, etc.)
 - ⬜ Optional: `openapi.yaml`
 
+Diagnostics helpers: `bin/check-queue.php` (recent queue rows), `bin/check-message.php <gateway_message_id>` (live gateway state).
+
 ---
 
-## Suggested env vars — ✅ core supported; ⬜ ADMIN_* with Phase 5
+## Suggested env vars — ✅ core + ADMIN_* supported
 
 ```
 APP_URL=http://localhost/projects/jelite_sms_api
@@ -305,4 +336,4 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
 2. New **Agent** chat
 3. Paste the contents of [`NEW_CHAT_PROMPT.md`](NEW_CHAT_PROMPT.md)
-4. Say: implement **Phase 5 Admin UI** end-to-end per `PLAN.md` (or continue Hostinger Phase 6 when ready)
+4. Say: implement **Phase 5 `/admin/test` (config probe + send-as-consumer)** per `PLAN.md`, or continue Hostinger Phase 6 when ready

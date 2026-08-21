@@ -15,15 +15,19 @@ use Jelite\SmsRepository;
 
 Config::load(dirname(__DIR__) . '/.env');
 
+// Connect first: Database::pdo() loads Admin-UI settings (app_settings)
+// as config overrides, so the gateway must be built after this line.
+$db = Database::pdo();
+
 $gateway = SmsGateway::fromConfig();
 if ($gateway === null) {
-    fwrite(STDERR, "Gateway not configured (SMS_GATEWAY_URL/USERNAME/PASSWORD).\n");
+    fwrite(STDERR, "Gateway not configured (SMS_GATEWAY_URL/USERNAME/PASSWORD via Admin Settings or .env).\n");
     exit(1);
 }
 
 $limit = Config::int('WORKER_BATCH_SIZE', 20);
 $maxAttempts = Config::int('SMS_MAX_ATTEMPTS', 3);
-$repo = new SmsRepository(Database::pdo());
+$repo = new SmsRepository($db);
 
 $messages = $repo->claimQueued($limit, $maxAttempts);
 foreach ($messages as $message) {

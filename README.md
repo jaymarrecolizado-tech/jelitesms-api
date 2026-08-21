@@ -15,6 +15,8 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
 | `src/` | Config, DB, router/App, Phone E.164, SmsGateway client, repositories |
 | `bin/setup.php` | Create DB for current `APP_ENV` + apply schema |
 | `bin/worker.php` | Queue drain (run via cron) |
+| `bin/check-queue.php` | Show recent queue rows |
+| `bin/check-message.php` | Query live gateway state for a gateway message ID |
 | `bin/manage-keys.php` | Create / list / revoke API keys |
 | `database/schema.sql` | Tables: `api_keys`, `sms_messages` |
 | `tests/run.php` | Dependency-free test suite (mock gateway) |
@@ -121,11 +123,11 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Admin UI + Hostinger
+## Planned next: Admin Test page + Hostinger
 
 See [`PLAN.md`](PLAN.md) for full detail.
 
-- **Phase 5 — Admin UI** (`/admin`): password-protected settings (gateway + SMS tunables), API key create/list/revoke, recent messages (read-only). Settings stored in MySQL `app_settings`; `APP_ENV` / `DB_*` / `ADMIN_*` stay in `.env` only.
+- **Phase 5 Test / Playground** (`/admin/test`): check config (same as health/gateway probe) and send a test SMS **as a selected API key** — same path consumer apps use (`POST /api/v1/sms/send`), plus optional one-shot worker run.
 - **Phase 6 — Hostinger**: deploy this API on the same VPS as your apps; phone via sms-gate.app **cloud** (not phone LAN IP).
 
 ## Out of scope
