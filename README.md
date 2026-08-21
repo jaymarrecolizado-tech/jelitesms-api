@@ -14,11 +14,14 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
 | `index.php` + `.htaccess` | Front controller (XAMPP-friendly URLs) |
 | `src/` | Config, DB, router/App, Phone E.164, SmsGateway client, repositories |
 | `bin/setup.php` | Create DB for current `APP_ENV` + apply schema |
-| `bin/worker.php` | Queue drain (run via cron) |
+| `bin/worker.php` | Queue drain (run via cron / Task Scheduler) |
+| `bin/register-worker-task.ps1` | Register the every-minute Windows Task Scheduler job |
+| `bin/manage-keys.php` | Create / list / revoke API keys |
 | `bin/check-queue.php` | Show recent queue rows |
 | `bin/check-message.php` | Query live gateway state for a gateway message ID |
-| `bin/manage-keys.php` | Create / list / revoke API keys |
-| `database/schema.sql` | Tables: `api_keys`, `sms_messages` |
+| `database/schema.sql` | Tables: `api_keys`, `sms_messages`, `app_settings` |
+| `docs/CONSUMERS.md` | Integration guides: plain PHP, Laravel, React |
+| `docs/DEPLOY.md` | Portability runbook: XAMPP → Hostinger checklist + cron snippets |
 | `tests/run.php` | Dependency-free test suite (mock gateway) |
 
 ## Setup (XAMPP)
@@ -36,11 +39,15 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
    C:\xampp\php\php.exe bin\manage-keys.php create --name="HRMIS" --rate=30
    ```
 
-4. Schedule the worker (cron / Task Scheduler), e.g. every minute:
+4. Automate the worker (every minute):
 
    ```
-   C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
+   powershell -ExecutionPolicy Bypass -File bin\register-worker-task.ps1
    ```
+
+## Consumer integration
+
+Full guides for fresh **plain PHP**, **Laravel**, and **React** projects live in [`docs/CONSUMERS.md`](docs/CONSUMERS.md). Deploy/portability checklist (XAMPP → Hostinger) is in [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## API v1
 
@@ -125,12 +132,9 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Phase 5.5 (local) then Hostinger
+## Planned next: Phase 6 (Hostinger)
 
-See [`PLAN.md`](PLAN.md) for full detail.
-
-- **Phase 5.5 (active):** XAMPP worker Task Scheduler + `docs/CONSUMERS.md` (PHP / Laravel / React) + `docs/DEPLOY.md` (what to change when uploading later). No live VPS deploy in this phase.
-- **Phase 6 (deferred):** deploy this API on the same Hostinger VPS as your apps; phone via sms-gate.app **cloud**.
+Phase 5.5 deliverables are in place (`docs/CONSUMERS.md`, `docs/DEPLOY.md`, Task Scheduler script). See [`PLAN.md`](PLAN.md) for the deferred Hostinger deploy steps.
 
 ## Out of scope
 

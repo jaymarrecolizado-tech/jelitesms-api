@@ -4,9 +4,9 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5 COMPLETE (incl. Test + Usage).** Active next work: **Phase 5.5 —
-> local-first ops + consumer/deploy docs** (XAMPP now, Hostinger-ready later). Live VPS
-> upload remains **Phase 6** (deferred until local testing is comfortable).
+> **Status: Phase 1–5 COMPLETE (incl. Test + Usage). Phase 5.5 COMPLETE** — worker runs every
+> minute via Task Scheduler; consumer + deploy docs shipped. Next: **Phase 6** Hostinger deploy
+> (deferred until you're ready) plus optional delivery-state sync / OpenAPI.
 
 ---
 
@@ -239,7 +239,7 @@ flowchart LR
 
 ---
 
-### Phase 5.5 — Local-first ops + docs (Hostinger-ready later) — ⬜ ACTIVE
+### Phase 5.5 — Local-first ops + docs (Hostinger-ready later) — ✅ DONE
 
 Still testing on **XAMPP localhost**. Do **not** upload to Hostinger in this phase. Keep one codebase portable: local today → env + cron swap on VPS later.
 
@@ -261,7 +261,9 @@ flowchart LR
 | Portable schedule docs + Hostinger cron **snippet** for later | Delivery-state sync, OpenAPI, alerts |
 | Document API usage for fresh **PHP**, **Laravel**, **React** projects | Wiring real Hostinger apps in their repos |
 
-#### 1. Worker automation (local, portable) — ⬜
+#### 1. Worker automation (local, portable) — ✅ DONE
+
+Verified live: task "JE Lite SMS Worker" registered (result 0), enqueued message auto-sent by the schedule within one minute, no manual step.
 
 Without a schedule, messages stay `queued` unless Admin → Test “run worker” or CLI is used.
 
@@ -278,7 +280,7 @@ C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
 * * * * * php /path/to/jelite_sms_api/bin/worker.php >> /path/to/jelite_sms_api/worker.log 2>&1
 ```
 
-#### 2. Deploy portability runbook — ⬜ (`docs/DEPLOY.md`)
+#### 2. Deploy portability runbook — ✅ DONE (`docs/DEPLOY.md`)
 
 One codebase; only env/hosting differs. Document what to change when uploading later (no live deploy yet):
 
@@ -293,7 +295,7 @@ One codebase; only env/hosting differs. Document what to change when uploading l
 
 Also: never commit `.env`; upload code + `.env.example`; run `bin/setup.php` on server; create new prod API keys (or migrate carefully).
 
-#### 3. Consumer documentation — ⬜ (`docs/CONSUMERS.md`)
+#### 3. Consumer documentation — ✅ DONE (`docs/CONSUMERS.md`)
 
 Full usage guides for fresh projects; link from `README.md`. Shared contract:
 
@@ -312,12 +314,12 @@ Full usage guides for fresh projects; link from `README.md`. Shared contract:
 Local examples use: `http://localhost/projects/jelite_sms_api`  
 Note in each section: swap base URL when Phase 6 goes live.
 
-#### Phase 5.5 done when
+#### Phase 5.5 done when — ✅ all met
 
-1. Worker runs every minute on XAMPP via Task Scheduler (script + docs).
-2. `docs/CONSUMERS.md` covers PHP, Laravel, React.
-3. `docs/DEPLOY.md` lists exactly what to change on upload.
-4. `README.md` / this plan point to those docs.
+1. ✅ Worker runs every minute on XAMPP via Task Scheduler (script + docs) — verified live end-to-end.
+2. ✅ `docs/CONSUMERS.md` covers PHP, Laravel, React.
+3. ✅ `docs/DEPLOY.md` lists exactly what to change on upload.
+4. ✅ `README.md` / this plan point to those docs.
 
 ---
 
@@ -355,10 +357,10 @@ Do **not** set `SMS_GATEWAY_URL` to `http://192.168.x.x:8080` on Hostinger.
 
 **Phase 5.5 (active — local XAMPP):**
 
-- ⬜ Task Scheduler + `bin/register-worker-task.ps1` + worker schedule docs (incl. Hostinger cron snippet)
-- ⬜ `docs/DEPLOY.md` — portable upload checklist
-- ⬜ `docs/CONSUMERS.md` — plain PHP, Laravel, React usage
-- ⬜ Link those docs from `README.md`
+- ✅ Task Scheduler + `bin/register-worker-task.ps1` + worker schedule docs (incl. Hostinger cron snippet) — registered & verified live
+- ✅ `docs/DEPLOY.md` — portable upload checklist
+- ✅ `docs/CONSUMERS.md` — plain PHP, Laravel, React usage
+- ✅ Link those docs from `README.md`
 
 **Phase 6 (deferred):**
 
