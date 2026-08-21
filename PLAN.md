@@ -4,27 +4,28 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5.7 COMPLETE** (API, admin incl. Docs page, worker schedule, consumer docs
-> coverage in [`docs/CONSUMERS.md`](docs/CONSUMERS.md) + [`docs/DEPLOY.md`](docs/DEPLOY.md)).  
-> **Phase 6 Hostinger deploy: SKIPPED for now.** Optional later: delivery-state sync, `openapi.yaml`.
+> **Status: Phase 1–5.8 COMPLETE** (API, admin incl. Docs + Reports pages, worker schedule, delivery-state sync).  
+> **Next for coding agents: nothing mandatory** — see the Recommended backlog; only act if the user asks.  
+> **Phase 6 Hostinger deploy: SKIPPED for now.** Optional later: OpenAPI, webhooks, etc.
 
 ---
 
 ## For the next coding agent (read this first)
 
-**Do not** implement Hostinger deploy (Phase 6 is skipped). **Do not** rewrite [`docs/CONSUMERS.md`](docs/CONSUMERS.md) from scratch.
+**Do not** implement Hostinger deploy (Phase 6 is skipped). **Do not** rewrite consumer Markdown from scratch.
 
-**Implement next:** nothing — Phase 5.7 (Admin Docs page) is complete. Only act on optional items (delivery-state sync, `openapi.yaml`) or if the user un-skips Phase 6.
+**Implement next: nothing** — Phase 5.8 (Delivery Reports) is complete. Only act on the Recommended backlog or if the user un-skips Phase 6.
 
 | Already on disk | Notes |
 |-----------------|--------|
-| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | **Complete**: quick start, PHP helpers, Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, troubleshooting. Rendered live at **Admin → Docs** |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Rendered on the Docs page deploy tab; deploy itself remains out of scope until user un-skips Phase 6 |
-| Admin `/admin/keys`, `/admin/test`, `/admin/usage`, `/admin/docs` | Referenced throughout the consumer docs |
+| [`docs/CONSUMERS.md`](docs/CONSUMERS.md) | Complete; also at **Admin → Docs** |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Deploy tab; Phase 6 still skipped |
+| [`bin/check-message.php`](bin/check-message.php) | Manual live gateway state — patterns to reuse for sync |
+| Admin | Settings, Keys, Messages, Usage, **Reports**, Test, Docs |
 
-**Out of scope this pass:** Phase 6 VPS upload, DICT SSO, LOKA migration, inbound SMS, OpenAPI (unless asked), changing runtime API behavior.
+**Out of scope this pass:** Phase 6 VPS upload, DICT SSO, LOKA migration, inbound SMS (unless user asks).
 
-**Rules:** Never put API keys in React client env (`VITE_*` / `NEXT_PUBLIC_*`). Examples must use **local** base URL `http://localhost/projects/jelite_sms_api` with a one-line note that production URL swaps later.
+**Rules:** Never put API keys in React client env. Allowlist admin doc files. Prefer small PHP files; mock gateway only in tests.
 
 ---
 
@@ -432,6 +433,92 @@ flowchart LR
 
 ---
 
+### Phase 5.8 — Delivery Reports — ✅ DONE
+
+**Goal:** Real **delivery reports** — sync phone-level delivery state from sms-gate, show aggregates in Admin, and expose richer status to consumer apps.
+
+**Why:** Usage/Messages today mostly reflect queue acceptance. `sent` ≈ gateway accepted the job, not necessarily **Delivered** to the handset. Manual check exists via [`bin/check-message.php`](bin/check-message.php); Phase 5.8 automates that and reports on it.
+
+```mermaid
+flowchart LR
+  Worker[Send_worker]
+  Gw[sms_gate_cloud]
+  Phone[Phone_SIM]
+  Sync[Delivery_sync_job]
+  DB[(sms_messages)]
+  Reports[Admin_Reports]
+  Api[GET_sms_id]
+
+  Worker -->|POST_message| Gw
+  Gw --> Phone
+  Sync -->|poll_by_gateway_message_id| Gw
+  Sync --> DB
+  DB --> Reports
+  DB --> Api
+```
+
+#### Locked design
+
+| Piece | Choice |
+|-------|--------|
+| Status model | Keep `queued` / `sending` / `failed`; `sent` = handed to gateway; add **`delivered`** when sms-gate reports Delivered |
+| Extra columns | `delivered_at` DATETIME NULL; `gateway_state` VARCHAR (raw gateway state string) on `sms_messages` |
+| Sync runner | `bin/sync-delivery.php` (and/or hook from worker after send) — schedule same cadence as worker (Task Scheduler / cron later) |
+| Gateway lookup | Reuse/extend [`SmsGateway`](src/SmsGateway.php) + patterns from `bin/check-message.php`; injectable transport for tests |
+| Admin page | `GET /admin/reports` — filters: from/to, API key, status; summary totals; per-app breakdown; optional message drill-down; **CSV export** |
+| Nav | Add **Reports** in admin nav |
+| Consumer API | `GET /api/v1/sms/{id}` includes `status` (incl. `delivered`), `gateway_state`, `delivered_at` when set |
+| Docs | Update CONSUMERS.md status section + Admin Docs will pick it up from disk |
+
+Without sync first, Reports would only duplicate **Usage**.
+
+#### Agent implementation checklist (Phase 5.8) — ✅ all done
+
+1. ✅ **Schema** — `delivered` enum value, `delivered_at`, `gateway_state` in `database/schema.sql`; idempotent migration via `Database::migrate()` (used by `bin/setup.php` and tests).
+2. ✅ **SmsGateway** — `getState(string $gatewayMessageId)` (GET `{apiPath}/{id}`, Basic auth, injectable transport).
+3. ✅ **Sync** — `Worker::syncDeliveries()` + `bin/sync-delivery.php`; also runs after each `bin/worker.php` drain. Maps Delivered → `delivered`, Failed/Cancelled → terminal `failed` (+reason), others recorded raw in `gateway_state`. Window: `SMS_DELIVERY_SYNC_DAYS` (default 7), batch: `WORKER_BATCH_SIZE`.
+4. ✅ **API** — status response includes `gateway_state` and `delivered_at`; key isolation unchanged.
+5. ✅ **Admin Reports** — `GET /admin/reports` (from/to, app, status filters; summary; per-app breakdown; 200-row drill-down) + `GET /admin/reports/export` CSV.
+6. ✅ **Schedule docs** — cron/Task Scheduler note for `bin/sync-delivery.php` in `docs/DEPLOY.md`.
+7. ✅ **Tests** — `tests/DeliverySyncTest.php` (state mapping, window, limit, API fields) + `tests/ReportsTest.php` (auth, aggregates, filters, CSV) — **193/193 passing**.
+8. ✅ **Marked DONE** here + README Admin bullet for Reports.
+
+#### Phase 5.8 done when — ✅ all met
+
+- [x] Sync updates rows to `delivered` / `failed` from gateway states
+- [x] `/admin/reports` shows delivery totals by date/app/status (+ CSV)
+- [x] `GET /api/v1/sms/{id}` exposes delivery fields
+- [x] CONSUMERS.md documents new statuses/fields
+- [x] Tests pass; PLAN/README updated
+
+#### Out of scope for 5.8 (later backlog)
+
+- Webhooks on delivered/failed  
+- Messages filters / requeue UI  
+- Bulk send, scheduled send  
+- OpenAPI  
+- Phase 6 Hostinger  
+
+---
+
+### Recommended backlog (after 5.8 — not started)
+
+Prioritized ideas for later phases (do not implement unless user asks):
+
+| Priority | Feature | Notes |
+|----------|---------|--------|
+| High | Messages filters | Filter by key, status, date |
+| High | Queue backlog warning | Banner/alert if many stuck `queued` |
+| Medium | Usage/Reports CSV (Usage already partial via Reports CSV in 5.8) | |
+| Medium | Consumer webhooks | Per-key callback URL on terminal status |
+| Medium | Bulk / multi-recipient send | Gateway supports phone arrays |
+| Medium | Scheduled send (`send_at`) | Worker claims due rows only |
+| Lower | Key scopes / admin password UI / audit log / IP allowlist for `/admin` | |
+| Optional | `openapi.yaml` | |
+| Deferred | Phase 6 Hostinger, inbound SMS, DICT SSO, LOKA migration | |
+
+---
+
 ### Phase 6 — Hostinger deploy — SKIPPED (for now)
 
 Do **not** implement until the user explicitly asks. Runbook remains in [`docs/DEPLOY.md`](docs/DEPLOY.md) for later.
@@ -450,16 +537,20 @@ Laravel send/status/job, CodeIgniter, React Node + Laravel BFF patterns, trouble
 **Phase 5.7 — COMPLETE** (`/admin/docs` with tabs rendering the Markdown guides via in-repo
 `src/Markdown.php`; allowlisted docs only, traversal-safe; 145/145 tests passing).
 
+**Phase 5.8 — COMPLETE** (delivery-state sync via `Worker::syncDeliveries()` +
+`bin/sync-delivery.php`; `delivered` status, `delivered_at`, `gateway_state` columns with
+idempotent migration; Admin **Reports** page `/admin/reports` with filters + CSV export;
+`GET /api/v1/sms/{id}` exposes `gateway_state`/`delivered_at`; 193/193 tests passing).
+
 **Phase 6 — SKIPPED:**
 
 - Live Hostinger deploy (user deferred)
 
 **Later / optional (only if user asks):**
 
-- Delivery-state sync
-- `openapi.yaml`
+- See **Recommended backlog** above (filters, webhooks, bulk, OpenAPI, …)
 
-Diagnostics helpers: `bin/check-queue.php`, `bin/check-message.php <gateway_message_id>`.
+Diagnostics helpers: `bin/check-queue.php`, `bin/check-message.php <gateway_message_id>` (reuse for sync).
 
 ---
 
@@ -482,6 +573,7 @@ SMS_DEFAULT_COUNTRY_CODE=63
 SMS_MAX_MESSAGE_LENGTH=320
 SMS_MAX_ATTEMPTS=3
 WORKER_BATCH_SIZE=20
+SMS_DELIVERY_SYNC_DAYS=7
 
 # Phase 5 — admin bootstrap (not editable in UI)
 ADMIN_USER=admin
@@ -520,6 +612,6 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 ## How to start in Cursor (next agent)
 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
-2. Read **"For the next coding agent"** in this file — all planned phases (1–5.7) are complete
-3. Only act if the user asks for optional items (delivery-state sync, `openapi.yaml`) or un-skips **Phase 6** (Hostinger deploy — follow `docs/DEPLOY.md`)
+2. Read **"For the next coding agent"** in this file — all planned phases (1–5.8) are complete
+3. Only act if the user asks for a Recommended-backlog item or un-skips **Phase 6** (Hostinger deploy — follow `docs/DEPLOY.md`)
 4. Only create a git commit if the user explicitly asks

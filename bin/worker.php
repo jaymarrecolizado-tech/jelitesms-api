@@ -28,3 +28,12 @@ if ($processed === -1) {
 }
 
 echo "{$processed} message(s) processed.\n";
+
+// Phase 5.8: poll the gateway for delivery states of already-sent messages.
+$synced = Worker::syncDeliveries(null, null, static function (string $line): void {
+    echo $line, PHP_EOL;
+});
+
+if ($synced > 0) {
+    echo "{$synced} message(s) checked for delivery state.\n";
+}

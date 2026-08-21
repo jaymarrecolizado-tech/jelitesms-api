@@ -144,6 +144,53 @@ class SmsGateway
     }
 
     /**
+     * Fetch upstream delivery state for a gateway message id
+     * (GET {apiPath}/{id}, Basic auth). Upstream states: Pending, Processed,
+     * Sent, Delivered, Failed, Cancelling, Cancelled.
+     *
+     * @return array{ok:bool,state:?string,reason:?string,error:?string,http_code:int}
+     */
+    public function getState(string $gatewayMessageId): array
+    {
+        $url = $this->endpoint() . '/' . rawurlencode($gatewayMessageId);
+        $result = $this->request($url, null, false, true);
+        $code = $result['code'];
+        $body = $result['body'];
+
+        if ($result['errno'] !== 0) {
+            return [
+                'ok' => false,
+                'state' => null,
+                'reason' => null,
+                'error' => $result['error'] !== '' ? $result['error'] : 'cURL error ' . $result['errno'],
+                'http_code' => $code,
+            ];
+        }
+
+        if ($code < 200 || $code >= 300) {
+            return [
+                'ok' => false,
+                'state' => null,
+                'reason' => null,
+                'error' => 'HTTP ' . $code . ' @ ' . $result['final_url'],
+                'http_code' => $code,
+            ];
+        }
+
+        $decoded = is_string($body) ? json_decode($body, true) : null;
+        $state = is_array($decoded) ? ($decoded['state'] ?? null) : null;
+        $reason = is_array($decoded) ? ($decoded['reason'] ?? null) : null;
+
+        return [
+            'ok' => is_string($state) && $state !== '',
+            'state' => is_string($state) ? $state : null,
+            'reason' => is_string($reason) ? substr($reason, 0, 200) : null,
+            'error' => is_string($state) && $state !== '' ? null : 'No state in gateway response',
+            'http_code' => $code,
+        ];
+    }
+
+    /**
      * @return array{ok:bool,error:?string,http_code:int,body:?string}
      */
     public function health(): array
@@ -180,7 +227,7 @@ class SmsGateway
     /**
      * @return array{body:string|false,errno:int,error:string,code:int,final_url:string}
      */
-    private function request(string $url, ?string $payload, bool $headOnly = false): array
+    private function request(string $url, ?string $payload, bool $headOnly = false, bool $withAuth = false): array
     {
         if ($this->transport !== null) {
             return $this->transport($url, $payload, $headOnly);
@@ -198,10 +245,12 @@ class SmsGateway
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_NOBODY => $headOnly,
         ];
-        if ($payload !== null) {
-            $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = $payload;
-            $options[CURLOPT_HTTPHEADER] = ['Content-Type: application/json', 'Accept: application/json'];
+        if ($payload !== null || $withAuth) {
+            if ($payload !== null) {
+                $options[CURLOPT_POST] = true;
+                $options[CURLOPT_POSTFIELDS] = $payload;
+                $options[CURLOPT_HTTPHEADER] = ['Content-Type: application/json', 'Accept: application/json'];
+            }
             $options[CURLOPT_USERPWD] = $this->username . ':' . $this->password;
         }
         curl_setopt_array($ch, $options);

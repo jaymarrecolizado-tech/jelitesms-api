@@ -37,5 +37,40 @@ class Database
         ]);
     }
 
+    /**
+     * Idempotent migrations for databases created before newer schema changes
+     * (CREATE TABLE IF NOT EXISTS does not alter existing tables).
+     */
+    public static function migrate(PDO $db): void
+    {
+        self::migrateDeliveryStatus($db);
+    }
+
+    private static function migrateDeliveryStatus(PDO $db): void
+    {
+        $col = $db->prepare(
+            "SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sms_messages' AND COLUMN_NAME = 'status'"
+        );
+        $col->execute();
+        $type = (string) $col->fetchColumn();
+        if ($type !== '' && !str_contains($type, 'delivered')) {
+            $db->exec("ALTER TABLE sms_messages MODIFY status ENUM('queued','sending','sent','delivered','failed') NOT NULL DEFAULT 'queued'");
+        }
+
+        foreach ([
+            'delivered_at' => 'ALTER TABLE sms_messages ADD COLUMN delivered_at DATETIME NULL DEFAULT NULL AFTER sent_at',
+            'gateway_state' => 'ALTER TABLE sms_messages ADD COLUMN gateway_state VARCHAR(50) NULL DEFAULT NULL AFTER gateway_message_id',
+        ] as $column => $ddl) {
+            $exists = $db->query(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sms_messages' AND COLUMN_NAME = " . $db->quote($column)
+            )->fetchColumn();
+            if ((int) $exists === 0) {
+                $db->exec($ddl);
+            }
+        }
+    }
+
     private static ?string $currentDb = null;
 }

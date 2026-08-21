@@ -116,6 +116,12 @@ class AdminApp
                 [$from, $to] = self::parseDateRange($query);
                 return self::html(200, AdminViews::usagePage($from, $to, $this->sms->usageByKey($from, $to)));
 
+            case 'GET /admin/reports':
+                return self::reportsPage($query);
+
+            case 'GET /admin/reports/export':
+                return $this->reportsCsv($query);
+
             case 'GET /admin/test':
                 return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), null, null));
 
@@ -134,6 +140,40 @@ class AdminApp
             default:
                 return self::html(404, AdminViews::layout('Not found', '', '<h1>404</h1><p>Unknown admin page.</p>', true));
         }
+    }
+
+    /**
+     * Delivery reports page (Phase 5.8). Filters: from/to dates, API key, status.
+     */
+    private function reportsPage(array $query): array
+    {
+        [$from, $to] = self::parseDateRange($query);
+        $keyId = isset($query['api_key_id']) && $query['api_key_id'] !== '' ? (int) $query['api_key_id'] : null;
+        $status = is_string($query['status'] ?? null) && $query['status'] !== '' ? $query['status'] : null;
+
+        return self::html(200, AdminViews::reportsPage(
+            $from,
+            $to,
+            $this->apiKeys->list(),
+            $keyId,
+            $status,
+            $this->sms->reportTotals($from, $to, $keyId, $status),
+            $this->sms->reportByKey($from, $to, $keyId, $status),
+            $this->sms->reportMessages($from, $to, $keyId, $status)
+        ));
+    }
+
+    private function reportsCsv(array $query): array
+    {
+        [$from, $to] = self::parseDateRange($query);
+        $keyId = isset($query['api_key_id']) && $query['api_key_id'] !== '' ? (int) $query['api_key_id'] : null;
+        $status = is_string($query['status'] ?? null) && $query['status'] !== '' ? $query['status'] : null;
+
+        return [
+            'status' => 200,
+            'body' => AdminViews::reportsCsv($from, $to, $this->sms->reportMessages($from, $to, $keyId, $status)),
+            'content_type' => 'text/csv; charset=utf-8',
+        ];
     }
 
     private function login(array &$session, array $post, string $csrf): array

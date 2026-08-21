@@ -16,6 +16,7 @@ class AdminViews
                 '/admin/keys' => 'API Keys',
                 '/admin/messages' => 'Messages',
                 '/admin/usage' => 'Usage',
+                '/admin/reports' => 'Reports',
                 '/admin/test' => 'Test',
                 '/admin/docs' => 'Docs',
             ];
@@ -130,17 +131,17 @@ class AdminViews
      */
     public static function usagePage(string $from, string $to, array $rows): string
     {
-        $totals = ['total' => 0, 'queued' => 0, 'sending' => 0, 'sent' => 0, 'failed' => 0];
+        $totals = ['total' => 0, 'queued' => 0, 'sending' => 0, 'sent' => 0, 'delivered' => 0, 'failed' => 0];
         $body = '';
         foreach ($rows as $r) {
-            foreach (['total', 'queued', 'sending', 'sent', 'failed'] as $col) {
+            foreach (['total', 'queued', 'sending', 'sent', 'delivered', 'failed'] as $col) {
                 $totals[$col] += (int) $r[$col];
             }
             $status = ((int) $r['active']) === 1 ? 'active' : 'revoked';
             $body .= '<tr><td>' . e((string) $r['name']) . '</td><td><code>'
                 . e((string) $r['key_prefix']) . '…</code></td><td>' . $status . '</td><td>'
                 . (int) $r['total'] . '</td><td>' . (int) $r['sent'] . '</td><td>'
-                . (int) $r['failed'] . '</td><td>' . (int) $r['queued'] . '</td><td>'
+                . (int) $r['delivered'] . '</td><td>' . (int) $r['failed'] . '</td><td>' . (int) $r['queued'] . '</td><td>'
                 . (int) $r['sending'] . '</td><td>'
                 . e((string) ($r['last_used'] ?? '—')) . '</td></tr>';
         }
@@ -152,18 +153,130 @@ class AdminViews
 
         $summary = '<p class="hint">Showing <strong>' . e($from) . '</strong> → <strong>' . e($to)
             . '</strong>. Totals: <strong>' . $totals['total'] . '</strong> messages'
-            . ' (' . $totals['sent'] . ' sent, ' . $totals['failed'] . ' failed, '
-            . $totals['queued'] . ' queued).</p>';
+            . ' (' . $totals['sent'] . ' sent, ' . $totals['delivered'] . ' delivered, '
+            . $totals['failed'] . ' failed, ' . $totals['queued'] . ' queued).</p>';
 
         $content = '<h1>Usage by app</h1>'
             . '<p class="hint">Each API key name is a consumer app. Counts are from queued SMS in the selected date range.</p>'
             . $filter . $summary
             . '<table><thead><tr><th>App / key</th><th>Prefix</th><th>Status</th><th>Total</th>'
-            . '<th>Sent</th><th>Failed</th><th>Queued</th><th>Sending</th><th>Last used</th></tr></thead><tbody>'
-            . ($body !== '' ? $body : '<tr><td colspan="9">No API keys yet.</td></tr>')
+            . '<th>Sent</th><th>Delivered</th><th>Failed</th><th>Queued</th><th>Sending</th><th>Last used</th></tr></thead><tbody>'
+            . ($body !== '' ? $body : '<tr><td colspan="10">No API keys yet.</td></tr>')
             . '</tbody></table>';
 
         return self::layout('Usage', '/admin/usage', $content, true);
+    }
+
+    /**
+     * Delivery reports: filters, summary totals, per-app breakdown and a
+     * message drill-down (Phase 5.8).
+     *
+     * @param list<array> $keys all API keys (for the filter dropdown)
+     * @param array{total:int,queued:int,sending:int,sent:int,delivered:int,failed:int} $totals
+     * @param list<array> $byKey from SmsRepository::reportByKey
+     * @param list<array> $messages from SmsRepository::reportMessages
+     */
+    public static function reportsPage(string $from, string $to, array $keys, ?int $keyId, ?string $status, array $totals, array $byKey, array $messages): string
+    {
+        $keyOptions = '<option value="">All apps</option>';
+        foreach ($keys as $k) {
+            $sel = $keyId === (int) $k['id'] ? ' selected' : '';
+            $keyOptions .= '<option value="' . (int) $k['id'] . '"' . $sel . '>' . e((string) $k['name']) . '</option>';
+        }
+        $statusOptions = '<option value="">All statuses</option>';
+        foreach (['queued', 'sending', 'sent', 'delivered', 'failed'] as $s) {
+            $sel = $status === $s ? ' selected' : '';
+            $statusOptions .= '<option value="' . $s . '"' . $sel . '>' . $s . '</option>';
+        }
+
+        $query = http_build_query(array_filter([
+            'from' => $from,
+            'to' => $to,
+            'api_key_id' => $keyId,
+            'status' => $status,
+        ], static fn ($v) => $v !== null && $v !== ''));
+
+        $filter = '<form method="get" action="' . AdminApp::url('/admin/reports') . '" class="card narrow filter">'
+            . '<label>From<input type="date" name="from" value="' . e($from) . '" required></label>'
+            . '<label>To<input type="date" name="to" value="' . e($to) . '" required></label>'
+            . '<label>App<select name="api_key_id">' . $keyOptions . '</select></label>'
+            . '<label>Status<select name="status">' . $statusOptions . '</select></label>'
+            . '<button type="submit">Apply</button></form>';
+
+        $summary = '<p class="hint">Showing <strong>' . e($from) . '</strong> → <strong>' . e($to)
+            . '</strong>: <strong>' . $totals['total'] . '</strong> messages — '
+            . $totals['delivered'] . ' delivered, ' . $totals['sent'] . ' sent, '
+            . $totals['failed'] . ' failed, ' . $totals['queued'] . ' queued, '
+            . $totals['sending'] . ' sending.</p>';
+
+        $export = '<p><a class="button-link" href="' . AdminApp::url('/admin/reports/export') . '?' . e($query)
+            . '">Download CSV</a></p>';
+
+        $byKeyRows = '';
+        foreach ($byKey as $r) {
+            $byKeyRows .= '<tr><td>' . e((string) $r['name']) . '</td><td><code>'
+                . e((string) $r['key_prefix']) . '…</code></td><td>' . (int) $r['total'] . '</td><td>'
+                . (int) $r['delivered'] . '</td><td>' . (int) $r['sent'] . '</td><td>'
+                . (int) $r['failed'] . '</td><td>' . (int) $r['queued'] . '</td><td>'
+                . (int) $r['sending'] . '</td></tr>';
+        }
+        $byKeyTable = '<h2>By app</h2>'
+            . '<table><thead><tr><th>App / key</th><th>Prefix</th><th>Total</th><th>Delivered</th>'
+            . '<th>Sent</th><th>Failed</th><th>Queued</th><th>Sending</th></tr></thead><tbody>'
+            . ($byKeyRows !== '' ? $byKeyRows : '<tr><td colspan="8">No messages in range.</td></tr>')
+            . '</tbody></table>';
+
+        $msgRows = '';
+        foreach ($messages as $m) {
+            $err = $m['error'] !== null ? '<div class="error">' . e((string) $m['error']) . '</div>' : '';
+            $msgRows .= '<tr><td>' . (int) $m['id'] . '</td><td>' . e((string) $m['key_name']) . '</td><td>'
+                . e((string) $m['to_e164']) . '</td><td><span class="status s-' . e((string) $m['status']) . '">'
+                . e((string) $m['status']) . '</span></td><td>' . e((string) ($m['gateway_state'] ?? '')) . '</td><td>'
+                . e((string) $m['created_at']) . '</td><td>' . e((string) ($m['delivered_at'] ?? ''))
+                . $err . '</td></tr>';
+        }
+        $msgTable = '<h2>Messages</h2><p class="hint">Most recent 200 matching rows.</p>'
+            . '<table><thead><tr><th>ID</th><th>Key</th><th>To</th><th>Status</th><th>Gateway state</th>'
+            . '<th>Created</th><th>Delivered / Error</th></tr></thead><tbody>'
+            . ($msgRows !== '' ? $msgRows : '<tr><td colspan="7">No messages in range.</td></tr>')
+            . '</tbody></table>';
+
+        $content = '<h1>Delivery reports</h1>'
+            . '<p class="hint">Delivery state comes from the sync job (<code>bin/sync-delivery.php</code>, also run by the worker). '
+            . '<code>sent</code> = accepted by gateway; <code>delivered</code> = confirmed by the handset.</p>'
+            . $filter . $summary . $export . $byKeyTable . $msgTable;
+
+        return self::layout('Reports', '/admin/reports', $content, true);
+    }
+
+    /**
+     * CSV export for the Reports page (same filters).
+     *
+     * @param list<array> $messages from SmsRepository::reportMessages
+     */
+    public static function reportsCsv(string $from, string $to, array $messages): string
+    {
+        $out = fopen('php://temp', 'r+');
+        fputcsv($out, ['id', 'app', 'to', 'status', 'gateway_state', 'client_ref', 'attempts', 'error', 'created_at', 'sent_at', 'delivered_at']);
+        foreach ($messages as $m) {
+            fputcsv($out, [
+                $m['id'],
+                $m['key_name'],
+                $m['to_e164'],
+                $m['status'],
+                $m['gateway_state'],
+                $m['client_ref'],
+                $m['attempts'],
+                $m['error'],
+                $m['created_at'],
+                $m['sent_at'],
+                $m['delivered_at'],
+            ]);
+        }
+        rewind($out);
+        $csv = (string) stream_get_contents($out);
+        fclose($out);
+        return $csv;
     }
 
     /**
@@ -278,7 +391,7 @@ table { width: 100%; border-collapse: collapse; background: #fff; border: 1px so
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e8edf1; vertical-align: top; }
 th { background: #eef2f6; }
 .status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
-.s-sent { background: #e5f5e8; } .s-queued { background: #fdf3dc; } .s-sending { background: #e3eefb; } .s-failed { background: #fbeaea; }
+.s-sent { background: #e5f5e8; } .s-delivered { background: #c9ecd2; font-weight: 600; } .s-queued { background: #fdf3dc; } .s-sending { background: #e3eefb; } .s-failed { background: #fbeaea; }
 code { background: #eef2f6; padding: 2px 5px; border-radius: 4px; word-break: break-all; }
 form.logout { margin: 0; }
 textarea { padding: 7px 9px; border: 1px solid #b9c4cd; border-radius: 5px; font-size: 14px; width: 100%; box-sizing: border-box; font-family: inherit; }
@@ -295,6 +408,7 @@ pre { background: #eef2f6; padding: 10px; border-radius: 6px; overflow-x: auto; 
 .docs pre { background: #10263c; color: #dce8f4; }
 .docs pre code { background: transparent; color: inherit; padding: 0; }
 .card.filter { grid-template-columns: 1fr 1fr auto; align-items: end; max-width: 560px; }
+.button-link { display: inline-block; padding: 7px 14px; background: #1660a8; color: #fff; border-radius: 6px; text-decoration: none; font-size: 14px; }
 @media (max-width: 640px) { .card.filter { grid-template-columns: 1fr; } }
 </style>
 CSS;

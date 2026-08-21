@@ -120,6 +120,7 @@ class SmsRepository
                     COALESCE(SUM(m.status = "queued"), 0) AS queued,
                     COALESCE(SUM(m.status = "sending"), 0) AS sending,
                     COALESCE(SUM(m.status = "sent"), 0) AS sent,
+                    COALESCE(SUM(m.status = "delivered"), 0) AS delivered,
                     COALESCE(SUM(m.status = "failed"), 0) AS failed,
                     MAX(m.created_at) AS last_used
              FROM api_keys k
@@ -156,5 +157,146 @@ class SmsRepository
 
         $stmt = $this->db->prepare('UPDATE sms_messages SET status = ?, error = ? WHERE id = ?');
         $stmt->execute([$status, substr($error, 0, 500), $id]);
+    }
+
+    /**
+     * Sent messages with a gateway id whose delivery state is still unknown,
+     * oldest first (delivery-state sync).
+     *
+     * @return list<array{id:string,gateway_message_id:string}>
+     */
+    public function pendingDeliverySync(int $limit, int $days): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, gateway_message_id FROM sms_messages
+             WHERE status = "sent" AND gateway_message_id IS NOT NULL AND delivered_at IS NULL
+               AND created_at >= NOW() - INTERVAL ? DAY
+             ORDER BY id LIMIT ?'
+        );
+        $stmt->execute([$days, $limit]);
+        return $stmt->fetchAll();
+    }
+
+    public function markDelivered(int $id, ?string $gatewayState = null): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE sms_messages SET status = "delivered", error = NULL, delivered_at = NOW(),
+                    gateway_state = COALESCE(?, gateway_state)
+             WHERE id = ?'
+        );
+        $stmt->execute([$gatewayState, $id]);
+    }
+
+    /** Terminal delivery failure reported by the gateway (no retries). */
+    public function markDeliveryFailed(int $id, string $error, ?string $gatewayState = null): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE sms_messages SET status = "failed", error = ?, delivered_at = NOW(),
+                    gateway_state = COALESCE(?, gateway_state)
+             WHERE id = ?'
+        );
+        $stmt->execute([$error, $gatewayState, $id]);
+    }
+
+    /** Record the raw upstream state without changing local status. */
+    public function recordGatewayState(int $id, string $gatewayState): void
+    {
+        $stmt = $this->db->prepare('UPDATE sms_messages SET gateway_state = ? WHERE id = ?');
+        $stmt->execute([substr($gatewayState, 0, 50), $id]);
+    }
+
+    /**
+     * Shared WHERE for the admin Reports page (inclusive date range + optional
+     * key/status filters). Returns [sql, params].
+     *
+     * @return array{0:string,1:list<mixed>}
+     */
+    private function reportFilter(string $fromDate, string $toDate, ?int $keyId, ?string $status): array
+    {
+        $sql = 'WHERE DATE(m.created_at) >= ? AND DATE(m.created_at) <= ?';
+        $params = [$fromDate, $toDate];
+        if ($keyId !== null) {
+            $sql .= ' AND m.api_key_id = ?';
+            $params[] = $keyId;
+        }
+        if ($status !== null && in_array($status, ['queued', 'sending', 'sent', 'delivered', 'failed'], true)) {
+            $sql .= ' AND m.status = ?';
+            $params[] = $status;
+        }
+        return [$sql, $params];
+    }
+
+    /**
+     * Report totals for the selected filters.
+     *
+     * @return array{total:int,queued:int,sending:int,sent:int,delivered:int,failed:int}
+     */
+    public function reportTotals(string $fromDate, string $toDate, ?int $keyId = null, ?string $status = null): array
+    {
+        [$where, $params] = $this->reportFilter($fromDate, $toDate, $keyId, $status);
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) AS total,
+                    COALESCE(SUM(m.status = "queued"), 0) AS queued,
+                    COALESCE(SUM(m.status = "sending"), 0) AS sending,
+                    COALESCE(SUM(m.status = "sent"), 0) AS sent,
+                    COALESCE(SUM(m.status = "delivered"), 0) AS delivered,
+                    COALESCE(SUM(m.status = "failed"), 0) AS failed
+             FROM sms_messages m ' . $where
+        );
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: [];
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'queued' => (int) ($row['queued'] ?? 0),
+            'sending' => (int) ($row['sending'] ?? 0),
+            'sent' => (int) ($row['sent'] ?? 0),
+            'delivered' => (int) ($row['delivered'] ?? 0),
+            'failed' => (int) ($row['failed'] ?? 0),
+        ];
+    }
+
+    /**
+     * Per-app (API key) breakdown for the selected filters.
+     *
+     * @return list<array>
+     */
+    public function reportByKey(string $fromDate, string $toDate, ?int $keyId = null, ?string $status = null): array
+    {
+        [$where, $params] = $this->reportFilter($fromDate, $toDate, $keyId, $status);
+        $stmt = $this->db->prepare(
+            'SELECT k.id, k.name, k.key_prefix,
+                    COUNT(m.id) AS total,
+                    COALESCE(SUM(m.status = "queued"), 0) AS queued,
+                    COALESCE(SUM(m.status = "sending"), 0) AS sending,
+                    COALESCE(SUM(m.status = "sent"), 0) AS sent,
+                    COALESCE(SUM(m.status = "delivered"), 0) AS delivered,
+                    COALESCE(SUM(m.status = "failed"), 0) AS failed
+             FROM api_keys k
+             JOIN sms_messages m ON m.api_key_id = k.id
+             ' . $where . '
+             GROUP BY k.id, k.name, k.key_prefix
+             ORDER BY total DESC, k.name ASC'
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Message drill-down rows for the selected filters (newest first).
+     *
+     * @return list<array>
+     */
+    public function reportMessages(string $fromDate, string $toDate, ?int $keyId = null, ?string $status = null, int $limit = 200): array
+    {
+        [$where, $params] = $this->reportFilter($fromDate, $toDate, $keyId, $status);
+        $params[] = $limit;
+        $stmt = $this->db->prepare(
+            'SELECT m.*, k.name AS key_name FROM sms_messages m
+             JOIN api_keys k ON k.id = m.api_key_id
+             ' . $where . '
+             ORDER BY m.id DESC LIMIT ?'
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 }

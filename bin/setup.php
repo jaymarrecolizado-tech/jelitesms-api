@@ -27,6 +27,10 @@ if ($schema === false) {
 Database::pdo()->exec($schema);
 echo "Schema applied.\n";
 
+Database::migrate(Database::pdo());
+echo "Migrations checked.\n";
+
+
 function requireConfig(): void
 {
     $envFile = dirname(__DIR__) . '/.env';

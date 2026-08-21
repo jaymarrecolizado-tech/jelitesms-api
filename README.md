@@ -15,6 +15,7 @@ Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https:/
 | `src/` | Config, DB, router/App, Phone E.164, SmsGateway client, repositories |
 | `bin/setup.php` | Create DB for current `APP_ENV` + apply schema |
 | `bin/worker.php` | Queue drain (run via cron / Task Scheduler) |
+| `bin/sync-delivery.php` | Delivery-state sync (run alongside the worker) |
 | `bin/register-worker-task.ps1` | Register the every-minute Windows Task Scheduler job |
 | `bin/manage-keys.php` | Create / list / revoke API keys |
 | `bin/check-queue.php` | Show recent queue rows |
@@ -119,7 +120,8 @@ Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USE
 - **Settings** — edit gateway/SMS tunables (`SMS_*`, `APP_URL`) without touching `.env`; values are stored in the `app_settings` table and override `.env`. The gateway password is write-only (blank = unchanged).
 - **API Keys** — create (plaintext shown once), list, revoke.
 - **Messages** — read-only view of the 50 most recent queue rows.
-- **Usage** — per-app (API key) counts for a date range: total / sent / failed / queued / sending, plus last used. Default range is the last 7 days.
+- **Usage** — per-app (API key) counts for a date range: total / sent / delivered / failed / queued / sending, plus last used. Default range is the last 7 days.
+- **Reports** — delivery reports for a date range with app/status filters: summary totals, per-app breakdown, message drill-down (status + gateway state + delivered time), and CSV export. Delivery state is synced from the gateway by `bin/sync-delivery.php` (also run after each worker drain).
 - **Test** — config probe (database/gateway status) and send-a-test-SMS as a selected consumer key, with optional one-shot worker run. Sends count against that key's rate limit; the response panel shows the same JSON shape consumer apps get.
 - **Docs** — read the consumer integration guide and deploy runbook right in the admin UI (`docs/CONSUMERS.md` / `docs/DEPLOY.md`, rendered live from disk).
 
@@ -133,11 +135,13 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Phase 5.7 Admin Docs page
+## Phase 5.8 — Delivery Reports (implemented)
+
+Delivery state is synced from the gateway: `sent` = accepted by the gateway, `delivered` = confirmed by the handset. The sync runs after every worker drain and via `bin/sync-delivery.php` (schedule it alongside the worker). `GET /api/v1/sms/{id}` exposes `status`, `gateway_state`, and `delivered_at`; **Admin → Reports** shows aggregates + CSV.
 
 **Hostinger deploy (Phase 6) is skipped for now.**
 
-**Next agent work:** add Admin **Docs** at `/admin/docs` per **Phase 5.7** in [`PLAN.md`](PLAN.md) — render [`docs/CONSUMERS.md`](docs/CONSUMERS.md) (and Deploy tab for [`docs/DEPLOY.md`](docs/DEPLOY.md)) inside the logged-in admin UI. Do not duplicate the Markdown into PHP.
+**Remaining backlog (only if asked):** webhooks on delivered/failed, message filters/requeue UI, bulk/scheduled send, OpenAPI. See `PLAN.md`.
 
 ## Out of scope
 

@@ -149,8 +149,10 @@ class App
             'client_ref' => $message['client_ref'],
             'attempts' => (int) $message['attempts'],
             'error' => $message['error'],
+            'gateway_state' => $message['gateway_state'],
             'created_at' => $message['created_at'],
             'sent_at' => $message['sent_at'],
+            'delivered_at' => $message['delivered_at'],
         ]);
     }
 

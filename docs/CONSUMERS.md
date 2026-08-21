@@ -11,7 +11,7 @@ How to send SMS from your app (plain PHP, Laravel, CodeIgniter, or React-backed 
    SMS_API_KEY=jl_paste_your_key_here
    ```
 3. **Send your first SMS** — jump to your stack: [Plain PHP](#plain-php) · [Laravel](#laravel) · [CodeIgniter](#codeigniter) · [React SPA](#react-spa).
-4. **Confirm delivery** — **Admin → Messages** shows the queue row; **Admin → Usage** shows your app's counts. Use **Admin → Test** to reproduce any response without touching your code.
+4. **Confirm delivery** — **Admin → Messages** shows the queue row; **Admin → Usage** shows your app's counts; **Admin → Reports** shows delivery outcomes (delivered/failed) with CSV export. Use **Admin → Test** to reproduce any response without touching your code.
 5. When the API moves to a production URL later, only `SMS_API_URL` changes — nothing else.
 
 ---
@@ -30,7 +30,8 @@ How to send SMS from your app (plain PHP, Laravel, CodeIgniter, or React-backed 
 | `422` `{ "error": "validation_failed", "fields": { ... } }` | Bad phone/message/client_ref | Fix input from `fields` |
 | `429` `{ "error": "rate_limited" }` | Key's per-minute limit exceeded | Wait and retry; ask admin to raise limit |
 
-- **Status:** `GET /api/v1/sms/{id}` → `{ id, to, status, client_ref, attempts, error, created_at, sent_at }` where `status` is `queued → sending → sent | failed`. Only the key that created the message can read it.
+- **Status:** `GET /api/v1/sms/{id}` → `{ id, to, status, client_ref, attempts, error, gateway_state, created_at, sent_at, delivered_at }` where `status` is `queued → sending → sent → delivered | failed`. Only the key that created the message can read it.
+- **Delivery states:** `sent` = accepted by the SMS gateway; `delivered` = confirmed by the recipient handset (synced from the gateway by the delivery-sync job — usually within a minute or two). `gateway_state` is the raw upstream state (`Pending`, `Sent`, `Delivered`, `Failed`, …); a terminal gateway failure flips `status` to `failed` with the reason in `error`.
 - **Phone formats:** E.164 (`+639171234567`), local (`09171234567`), or bare (`9171234567`) all normalize to E.164.
 - **Delivery model:** asynchronous — the queue worker runs every minute, so sends are usually near-instant but not guaranteed within a fixed time. Use `client_ref` on business transactions (e.g. `leave-{id}`) so retries never double-send.
 - **Security:** never put the API key in browser code, `NEXT_PUBLIC_*` vars, Vite client env, or mobile bundles. Only server-side code calls this API.
@@ -136,7 +137,7 @@ match (true) {
 
 // Later:
 $check = smsStatus((int) $result['body']['id']);
-echo $check['body']['status']; // queued | sending | sent | failed
+echo $check['body']['status']; // queued | sending | sent | delivered | failed
 ```
 
 Copy-paste test commands (Windows PowerShell / cmd):

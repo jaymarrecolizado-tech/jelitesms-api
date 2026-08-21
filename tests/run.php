@@ -50,6 +50,7 @@ function section(string $name): void
 $server = Database::serverPdo();
 $server->exec('CREATE DATABASE IF NOT EXISTS `jelite_sms_api_test` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 Database::pdo('jelite_sms_api_test')->exec((string) file_get_contents(dirname(__DIR__) . '/database/schema.sql'));
+Database::migrate(Database::pdo('jelite_sms_api_test'));
 Database::pdo('jelite_sms_api_test')->exec('TRUNCATE TABLE sms_messages');
 Database::pdo('jelite_sms_api_test')->exec('DELETE FROM api_keys');
 
@@ -63,7 +64,7 @@ $gwRequests = [];
 $gwResponse = fn (): array => ['body' => json_encode(['id' => 'gw-123']), 'errno' => 0, 'error' => '', 'code' => 202, 'final_url' => 'mock'];
 $transport = function (string $url, ?string $payload, bool $headOnly) use (&$gwRequests, &$gwResponse): array {
     $gwRequests[] = ['url' => $url, 'payload' => $payload];
-    return $gwResponse();
+    return ($gwResponse)($url);
 };
 $gateway = new SmsGateway('https://api.sms-gate.app', 'user', 'pass', '/3rdparty/v1/messages', 15, $transport);
 
@@ -77,7 +78,9 @@ require __DIR__ . '/SendValidationTest.php';
 require __DIR__ . '/EnqueueStatusTest.php';
 require __DIR__ . '/GatewayClientTest.php';
 require __DIR__ . '/WorkerDrainTest.php';
+require __DIR__ . '/DeliverySyncTest.php';
 require __DIR__ . '/AdminTest.php';
+require __DIR__ . '/ReportsTest.php';
 
 echo "\n{$passes} passed, {$failures} failed\n";
 exit($failures === 0 ? 0 : 1);

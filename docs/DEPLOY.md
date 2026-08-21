@@ -50,9 +50,10 @@ Re-run the script after moving the project folder. Remove with
 
 ```
 * * * * * php /path/to/jelite_sms_api/bin/worker.php >> /path/to/jelite_sms_api/worker.log 2>&1
+* * * * * php /path/to/jelite_sms_api/bin/sync-delivery.php >> /path/to/jelite_sms_api/sync.log 2>&1
 ```
 
-Ensure `worker.log` is writable by the PHP user and not web-accessible (or write outside the docroot).
+`bin/sync-delivery.php` polls the gateway for delivery states (`delivered` / terminal `failed`) of already-sent messages; the worker also runs it after each drain, so a separate schedule is optional but recommended. Ensure log files are writable by the PHP user and not web-accessible (or write outside the docroot).
 
 ## Rules that hold everywhere
 

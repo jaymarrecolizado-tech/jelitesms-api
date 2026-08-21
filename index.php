@@ -47,7 +47,7 @@ if ($path === '/admin' || str_starts_with($path, '/admin/')) {
     if (isset($result['location'])) {
         header('Location: ' . $result['location']);
     }
-    header('Content-Type: text/html; charset=utf-8');
+    header('Content-Type: ' . ($result['content_type'] ?? 'text/html; charset=utf-8'));
     echo $result['body'];
     exit;
 }
