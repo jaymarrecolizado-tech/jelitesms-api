@@ -1,3 +1,4 @@
 .env
 vendor/
 *.log
+NEW_CHAT_PROMPT.md
