@@ -65,6 +65,27 @@ class App
         return $next($key);
     }
 
+    /**
+     * Effective health body (database + gateway reachability), no secrets.
+     * Used by GET /api/v1/health and the admin Test page probe.
+     */
+    public function probe(): array
+    {
+        return $this->health()['body'];
+    }
+
+    /**
+     * Public send path for a resolved API-key row (admin Test page reuses
+     * this so consumers and operators get identical validation/enqueue).
+     *
+     * @param array $apiKey api_keys row
+     * @return array{status:int,body:array}
+     */
+    public function sendRaw(array $apiKey, ?string $rawBody): array
+    {
+        return $this->send($apiKey, $rawBody);
+    }
+
     private function send(array $apiKey, ?string $rawBody): array
     {
         $data = json_decode((string) $rawBody, true);

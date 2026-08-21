@@ -36,8 +36,11 @@ class AdminApp
         private ApiKeyRepository $apiKeys,
         private SmsRepository $sms,
         private SettingsRepository $settings,
-        private \PDO $db
+        private \PDO $db,
+        private ?App $app = null,
+        private ?\Closure $drain = null
     ) {
+        $this->app ??= App::fromConfig();
     }
 
     public static function fromConfig(): self
@@ -108,6 +111,18 @@ class AdminApp
 
             case 'GET /admin/messages':
                 return self::html(200, AdminViews::messagesPage($this->sms->recentWithKeyNames(50)));
+
+            case 'GET /admin/test':
+                return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), null, null));
+
+            case 'POST /admin/test/probe':
+                if (!AdminAuth::verifyCsrf($session, $post['csrf'] ?? null)) {
+                    return self::forbidden($session);
+                }
+                return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), $this->app->probe(), null));
+
+            case 'POST /admin/test/send':
+                return $this->sendTestSms($session, $post);
 
             default:
                 return self::html(404, AdminViews::layout('Not found', '', '<h1>404</h1><p>Unknown admin page.</p>', true));
@@ -198,6 +213,58 @@ class AdminApp
         $key = $this->apiKeys->create($name, $rate);
         $session['created_key'] = $key['key']; // shown once on the next page render
         return self::redirect(self::url('/admin/keys'));
+    }
+
+    /**
+     * Send-as-consumer: identical validation/enqueue path as the public API,
+     * attributed to the selected active key (rate limit + ownership included).
+     */
+    private function sendTestSms(array &$session, array $post): array
+    {
+        if (!AdminAuth::verifyCsrf($session, $post['csrf'] ?? null)) {
+            return self::forbidden($session);
+        }
+
+        $keyRow = $this->apiKeys->find((int) ($post['api_key_id'] ?? 0));
+        if ($keyRow === null) {
+            return self::html(422, AdminViews::testPage(AdminAuth::csrfToken($session), $this->activeKeys(), null, [
+                'error' => 'Selected API key does not exist or is revoked.',
+            ]));
+        }
+
+        $payload = json_encode(array_filter([
+            'to' => (string) ($post['to'] ?? ''),
+            'message' => (string) ($post['message'] ?? ''),
+            'client_ref' => trim((string) ($post['client_ref'] ?? '')) ?: null,
+        ], static fn ($v) => $v !== null));
+
+        $result = $this->app->sendRaw($keyRow, $payload);
+
+        $workerNote = null;
+        if (!empty($post['run_worker']) && $result['status'] === 202) {
+            $processed = $this->drain !== null ? ($this->drain)() : Worker::drain();
+            $workerNote = $processed === -1
+                ? 'Worker skipped: gateway not configured.'
+                : "Worker ran once: {$processed} message(s) processed.";
+        }
+
+        return self::html(200, AdminViews::testPage(
+            AdminAuth::csrfToken($session),
+            $this->activeKeys(),
+            null,
+            ['status' => $result['status'], 'body' => $result['body'], 'worker' => $workerNote]
+        ));
+    }
+
+    /**
+     * @return list<array> active keys only (id, name, prefix)
+     */
+    private function activeKeys(): array
+    {
+        return array_values(array_filter(
+            $this->apiKeys->list(),
+            static fn (array $k): bool => (bool) $k['active']
+        ));
     }
 
     private function takeFlash(array &$session, string $key): ?string

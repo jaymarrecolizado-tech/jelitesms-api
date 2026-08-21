@@ -15,6 +15,7 @@ class AdminViews
                 '/admin/settings' => 'Settings',
                 '/admin/keys' => 'API Keys',
                 '/admin/messages' => 'Messages',
+                '/admin/test' => 'Test',
             ];
             foreach ($links as $href => $label) {
                 $url = AdminApp::url($href);
@@ -120,6 +121,72 @@ class AdminViews
         return self::layout('Messages', '/admin/messages', $content, true);
     }
 
+    /**
+     * Test / Playground page: config probe + send-as-consumer form.
+     *
+     * @param list<array> $keys active API keys
+     * @param array|null $probe health body from App::probe()
+     * @param array|null $result ['status'=>int,'body'=>array,'worker'=>string|null,'error'=>string|null]
+     */
+    public static function testPage(string $csrf, array $keys, ?array $probe, ?array $result): string
+    {
+        $warning = '<p class="hint"><strong>Warning:</strong> sending here dispatches a '
+            . '<strong>real SMS</strong> when the gateway and worker are configured.</p>';
+
+        // Section A — config probe.
+        $probeHtml = '';
+        if ($probe !== null) {
+            $ok = (bool) ($probe['ok'] ?? false);
+            $class = $ok ? 'ok' : 'error';
+            $probeHtml = '<div class="' . $class . '">'
+                . 'Database: <strong>' . e((string) ($probe['database'] ?? '?')) . '</strong> &middot; '
+                . 'Gateway configured: <strong>' . e(!empty($probe['gateway_configured']) ? 'yes' : 'no') . '</strong> &middot; '
+                . 'Gateway: <strong>' . e((string) ($probe['gateway'] ?? '?')) . '</strong>'
+                . '</div>';
+        }
+
+        // Section B — send form.
+        $keyOptions = '';
+        foreach ($keys as $k) {
+            $keyOptions .= '<option value="' . (int) $k['id'] . '">'
+                . e((string) $k['name']) . ' (#' . (int) $k['id'] . ', ' . e((string) $k['key_prefix']) . '…)</option>';
+        }
+        if ($keyOptions === '') {
+            $keyOptions = '<option value="">— no active keys —</option>';
+        }
+
+        $resultHtml = '';
+        if ($result !== null) {
+            if (isset($result['error'])) {
+                $resultHtml = '<div class="error">' . e((string) $result['error']) . '</div>';
+            } else {
+                $json = json_encode($result['body'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $resultHtml = '<div class="' . (($result['status'] >= 200 && $result['status'] < 300) ? 'ok' : 'error') . '">'
+                    . '<strong>HTTP ' . (int) $result['status'] . '</strong>'
+                    . '<pre>' . e((string) $json) . '</pre>'
+                    . ($result['worker'] !== null ? '<p>' . e((string) $result['worker']) . '</p>' : '')
+                    . '<p><a href="' . AdminApp::url('/admin/messages') . '">View in Messages →</a></p></div>';
+            }
+        }
+
+        $content = '<h1>Test / Playground</h1>' . $warning
+            . '<h2>1. Check configuration</h2>'
+            . '<form method="post" action="' . AdminApp::url('/admin/test/probe') . '" class="card narrow">'
+            . '<input type="hidden" name="csrf" value="' . e($csrf) . '">'
+            . '<button type="submit">Check configuration</button></form>' . $probeHtml
+            . '<h2>2. Send test SMS (as a consumer app)</h2>'
+            . '<form method="post" action="' . AdminApp::url('/admin/test/send') . '" class="card">'
+            . '<input type="hidden" name="csrf" value="' . e($csrf) . '">'
+            . '<label>API key (send attributed to this consumer)<select name="api_key_id">' . $keyOptions . '</select></label>'
+            . '<label>To (phone)<input name="to" required placeholder="09171234567 or +639171234567"></label>'
+            . '<label>Message<textarea name="message" rows="3" required maxlength="1000"></textarea></label>'
+            . '<label>client_ref (optional idempotency)<input name="client_ref" placeholder="e.g. test-001"></label>'
+            . '<label class="check"><input type="checkbox" name="run_worker" value="1"> Run worker once after enqueue</label>'
+            . '<button type="submit">Send test SMS</button></form>' . $resultHtml;
+
+        return self::layout('Test', '/admin/test', $content, true);
+    }
+
     private static function css(): string
     {
         return <<<'CSS'
@@ -149,6 +216,10 @@ th { background: #eef2f6; }
 .s-sent { background: #e5f5e8; } .s-queued { background: #fdf3dc; } .s-sending { background: #e3eefb; } .s-failed { background: #fbeaea; }
 code { background: #eef2f6; padding: 2px 5px; border-radius: 4px; word-break: break-all; }
 form.logout { margin: 0; }
+textarea { padding: 7px 9px; border: 1px solid #b9c4cd; border-radius: 5px; font-size: 14px; width: 100%; box-sizing: border-box; font-family: inherit; }
+label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+label.check input { width: auto; }
+pre { background: #eef2f6; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
 </style>
 CSS;
     }

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Jelite\AdminApp;
 use Jelite\AdminAuth;
 use Jelite\Config;
+use Jelite\SettingsRepository;
+use Jelite\Worker;
 
 section('Admin UI');
 
@@ -107,3 +109,95 @@ check(!AdminAuth::check($sess), 'session deauthenticated');
 // Cleanup test key rows created here.
 $db->exec("DELETE FROM sms_messages WHERE api_key_id IN (SELECT id FROM api_keys WHERE name = 'Admin Created')");
 $db->exec("DELETE FROM api_keys WHERE name = 'Admin Created'");
+
+section('Admin Test page');
+
+// Auth gate: logged-out session cannot open the Test page.
+$fresh = [];
+$r = $admin->handle($fresh, 'GET', '/admin/test');
+same(302, $r['status'], 'logged-out /admin/test redirects to login');
+
+// Log back in.
+$csrf = AdminAuth::csrfToken($sess);
+$r = $admin->handle($sess, 'POST', '/admin/login', ['csrf' => $csrf, 'username' => 'admin', 'password' => 'secret-test-pass']);
+same(302, $r['status'], 're-login for test-page section');
+
+// Reset mock gateway to success and build an admin whose "run worker once"
+// drains through the mocked gateway (real gateway is unconfigured in tests).
+global $gwResponse;
+$gwResponse = fn (): array => ['body' => json_encode(['id' => 'gw-123']), 'errno' => 0, 'error' => '', 'code' => 202, 'final_url' => 'mock'];
+$admin = new AdminApp(
+    $keyRepo,
+    $smsRepo,
+    new SettingsRepository($db),
+    $db,
+    $app,
+    static fn (): int => Worker::drain($gateway)
+);
+
+$r = $admin->handle($sess, 'GET', '/admin/test');
+same(200, $r['status'], 'test page renders');
+check(str_contains($r['body'], 'Send test SMS'), 'send form rendered');
+check(str_contains($r['body'], 'Check configuration'), 'probe button rendered');
+check(str_contains($r['body'], 'real SMS'), 'real-SMS warning shown');
+
+$r = $admin->handle($sess, 'POST', '/admin/test/send', ['api_key_id' => '1', 'to' => '+639171234567', 'message' => 'x']);
+same(403, $r['status'], 'test send without CSRF → 403');
+
+// Send-as-consumer: attributed to the selected key, same validation path.
+$playground = $keyRepo->create('Playground Key', 5);
+$keyId = (string) $playground['id'];
+
+$r = $admin->handle($sess, 'POST', '/admin/test/send', [
+    'csrf' => $csrf,
+    'api_key_id' => $keyId,
+    'to' => '09181112222',
+    'message' => 'admin playground test',
+    'client_ref' => 'pg-1',
+    'run_worker' => '1',
+]);
+same(200, $r['status'], 'test send renders result panel');
+check(str_contains($r['body'], 'HTTP 202'), 'result shows HTTP 202');
+check(str_contains($r['body'], '&quot;queued&quot;'), 'result shows queued status');
+check(str_contains($r['body'], 'Worker ran once: 1 message(s) processed.'), 'injected drain ran once');
+
+$row = $smsRepo->findByClientRef((int) $keyId, 'pg-1');
+check($row !== null && $row['to_e164'] === '+639181112222', 'message enqueued under selected key');
+same('sent', $row['status'], 'run_worker moved status past queued');
+
+// Invalid key selection.
+$r = $admin->handle($sess, 'POST', '/admin/test/send', [
+    'csrf' => $csrf,
+    'api_key_id' => '999999',
+    'to' => '+639171234567',
+    'message' => 'x',
+]);
+same(422, $r['status'], 'unknown api_key_id → 422 error panel');
+
+// Config probe.
+$r = $admin->handle($sess, 'POST', '/admin/test/probe', ['csrf' => $csrf]);
+same(200, $r['status'], 'probe renders');
+check(str_contains($r['body'], 'Database:'), 'probe shows database state');
+
+// Rate limit counts against the selected consumer key (limit 5 → 5 more sends allowed, 6th blocked).
+for ($i = 0; $i < 4; $i++) {
+    $admin->handle($sess, 'POST', '/admin/test/send', [
+        'csrf' => $csrf,
+        'api_key_id' => $keyId,
+        'to' => '+639171234567',
+        'message' => "rate {$i}",
+        'client_ref' => "rl-{$i}",
+    ]);
+}
+$r = $admin->handle($sess, 'POST', '/admin/test/send', [
+    'csrf' => $csrf,
+    'api_key_id' => $keyId,
+    'to' => '+639171234567',
+    'message' => 'over limit',
+    'client_ref' => 'rl-over',
+]);
+check(str_contains($r['body'], 'HTTP 429'), 'test sends hit the selected key rate limit → 429');
+
+// Cleanup.
+$db->exec("DELETE FROM sms_messages WHERE api_key_id = " . (int) $keyId);
+$db->exec("DELETE FROM api_keys WHERE id = " . (int) $keyId);

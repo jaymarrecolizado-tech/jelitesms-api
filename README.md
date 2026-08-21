@@ -112,6 +112,7 @@ Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USE
 - **Settings** — edit gateway/SMS tunables (`SMS_*`, `APP_URL`) without touching `.env`; values are stored in the `app_settings` table and override `.env`. The gateway password is write-only (blank = unchanged).
 - **API Keys** — create (plaintext shown once), list, revoke.
 - **Messages** — read-only view of the 50 most recent queue rows.
+- **Test** — config probe (database/gateway status) and send-a-test-SMS as a selected consumer key, with optional one-shot worker run. Sends count against that key's rate limit; the response panel shows the same JSON shape consumer apps get.
 
 Admin credentials live only in `.env` (`ADMIN_USER`, `ADMIN_PASSWORD`) and cannot be changed from the UI. Consumer Bearer keys do not grant admin access.
 

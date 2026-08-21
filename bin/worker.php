@@ -10,35 +10,21 @@ require dirname(__DIR__) . '/src/autoload.php';
 
 use Jelite\Config;
 use Jelite\Database;
-use Jelite\SmsGateway;
-use Jelite\SmsRepository;
+use Jelite\Worker;
 
 Config::load(dirname(__DIR__) . '/.env');
 
 // Connect first: Database::pdo() loads Admin-UI settings (app_settings)
 // as config overrides, so the gateway must be built after this line.
-$db = Database::pdo();
+Database::pdo();
 
-$gateway = SmsGateway::fromConfig();
-if ($gateway === null) {
+$processed = Worker::drain(null, null, static function (string $line): void {
+    echo $line, PHP_EOL;
+});
+
+if ($processed === -1) {
     fwrite(STDERR, "Gateway not configured (SMS_GATEWAY_URL/USERNAME/PASSWORD via Admin Settings or .env).\n");
     exit(1);
 }
 
-$limit = Config::int('WORKER_BATCH_SIZE', 20);
-$maxAttempts = Config::int('SMS_MAX_ATTEMPTS', 3);
-$repo = new SmsRepository($db);
-
-$messages = $repo->claimQueued($limit, $maxAttempts);
-foreach ($messages as $message) {
-    $result = $gateway->send($message['to_e164'], $message['body']);
-    if ($result['ok']) {
-        $repo->markSent((int) $message['id'], $result['message_id']);
-        echo "[sent] #{$message['id']} to {$message['to_e164']}\n";
-    } else {
-        $repo->markFailed((int) $message['id'], (string) $result['error'], $maxAttempts);
-        echo "[retry/fail] #{$message['id']}: {$result['error']}\n";
-    }
-}
-
-echo count($messages) . " message(s) processed.\n";
+echo "{$processed} message(s) processed.\n";

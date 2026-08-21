@@ -122,7 +122,7 @@ Tables (in `database/schema.sql`, applied by `bin/setup.php`):
 2. ⬜ Optional `openapi.yaml`
 3. ✅ Tests (`tests/run.php`, dependency-free runner): auth, validation, enqueue/status/idempotency/rate-limit, gateway contract, worker drain — **63/63 passing**; gateway mocked only in tests
 
-### Phase 5 — Admin UI (config + keys) — ✅ core DONE; ⬜ Test/Playground still planned
+### Phase 5 — Admin UI (config + keys) — ✅ DONE (incl. Test/Playground page)
 
 Browser interface so operators can change gateway/SMS settings and manage API keys without hand-editing `.env` for every tweak. Same PHP project + HTML/CSS/JS (no separate React admin SPA).
 
@@ -154,7 +154,7 @@ Browser interface so operators can change gateway/SMS settings and manage API ke
 
 - Recent queue rows: id, to, status, attempts, error, timestamps
 
-#### Test / Playground page — ⬜ PLANNED (`/admin/test`)
+#### Test / Playground page — ✅ DONE (`/admin/test`)
 
 Operator page to **verify config** and **send a test SMS the same way consumer apps do** (Laravel, CI, React backends, other PHP), without leaving the admin UI or using curl.
 
@@ -218,21 +218,15 @@ flowchart LR
 - CSRF on admin POSTs
 - React/SPA must never call `/admin` or hold SMS API / gateway secrets
 
-#### Implementation touch list for Test page (remaining)
+#### Implementation touch list for Test page — ✅ all done
 
-- Extend `AdminApp.php` / `AdminViews.php`: routes `GET|POST /admin/test`, nav link **Test**
-- Reuse `App` health + send logic (no duplicated validation)
-- Optional one-shot worker drain from admin (reuse `SmsRepository` + `SmsGateway`, same as `bin/worker.php`)
-- Tests in `tests/AdminTest.php` (or sibling): config probe, send-as-key enqueue, auth gate
-- `README.md` — document `/admin/test`
+- ✅ `AdminApp.php` / `AdminViews.php`: routes `GET|POST /admin/test` (+ `/admin/test/probe`, `/admin/test/send`), nav link **Test**
+- ✅ Reuse `App` health + send logic (`App::probe()`, `App::sendRaw()` — no duplicated validation)
+- ✅ One-shot worker drain from admin (shared `Worker::drain()` with `bin/worker.php`)
+- ✅ Tests in `tests/AdminTest.php`: config probe, send-as-key enqueue, auth gate, CSRF, rate-limit attribution
+- ✅ `README.md` — documents `/admin/test`
 
-#### Build order (remaining)
-
-1. `/admin/test` UI shell + nav  
-2. Config probe section  
-3. Send-as-consumer form + response panel  
-4. Optional “run worker once”  
-5. Tests + README  
+#### Build order (remaining) — ✅ complete
 
 ---
 

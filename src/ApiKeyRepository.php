@@ -34,6 +34,14 @@ class ApiKeyRepository
         return $stmt->rowCount() > 0;
     }
 
+    public function find(int $id): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM api_keys WHERE id = ? AND active = 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
+
     /**
      * @return array|null api_keys row or null when unknown/revoked
      */
