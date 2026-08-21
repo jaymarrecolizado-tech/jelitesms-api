@@ -444,7 +444,7 @@ Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/mess
 
 ## Consumer examples
 
-Short examples in `README.md`. **Working baseline + Phase 5.6 expansion target:** [`docs/CONSUMERS.md`](docs/CONSUMERS.md).
+Short examples in `README.md`. **Full fresh-project guides:** [`docs/CONSUMERS.md`](docs/CONSUMERS.md).
 
 ```bash
 curl -X POST "http://localhost/projects/jelite_sms_api/api/v1/sms/send" \
@@ -469,7 +469,6 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 ## How to start in Cursor (next agent)
 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
-2. Read **"For the next coding agent"** + Phase **5.6** in this file + existing [`docs/CONSUMERS.md`](docs/CONSUMERS.md)
-3. New **Agent** chat
-4. Say: implement **Phase 5.6 Consumer docs coverage** per `PLAN.md` (expand `docs/CONSUMERS.md`; skip Hostinger deploy)
-5. Only create a git commit if the user explicitly asks
+2. Read **"For the next coding agent"** in this file — all planned phases are complete
+3. Only act if the user asks for optional items (delivery-state sync, `openapi.yaml`) or un-skips **Phase 6** (Hostinger deploy — follow `docs/DEPLOY.md`)
+4. Only create a git commit if the user explicitly asks
