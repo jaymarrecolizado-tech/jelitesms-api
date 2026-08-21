@@ -49,10 +49,10 @@ class AdminApp
         return new self(new ApiKeyRepository($db), new SmsRepository($db), new SettingsRepository($db), $db);
     }
 
-    public function handle(array &$session, string $method, string $path, array $post = []): array
+    public function handle(array &$session, string $method, string $path, array $post = [], array $query = []): array
     {
         try {
-            return $this->route($session, $method, $path, $post);
+            return $this->route($session, $method, $path, $post, $query);
         } catch (\Throwable $e) {
             return [
                 'status' => 500,
@@ -61,7 +61,7 @@ class AdminApp
         }
     }
 
-    private function route(array &$session, string $method, string $path, array $post): array
+    private function route(array &$session, string $method, string $path, array $post, array $query): array
     {
         $csrf = AdminAuth::csrfToken($session);
 
@@ -111,6 +111,10 @@ class AdminApp
 
             case 'GET /admin/messages':
                 return self::html(200, AdminViews::messagesPage($this->sms->recentWithKeyNames(50)));
+
+            case 'GET /admin/usage':
+                [$from, $to] = self::parseDateRange($query);
+                return self::html(200, AdminViews::usagePage($from, $to, $this->sms->usageByKey($from, $to)));
 
             case 'GET /admin/test':
                 return self::html(200, AdminViews::testPage($csrf, $this->activeKeys(), null, null));
@@ -275,6 +279,36 @@ class AdminApp
             return $value;
         }
         return null;
+    }
+
+    /**
+     * Inclusive Y-m-d range for Usage. Defaults to the last 7 days (today inclusive).
+     *
+     * @return array{0:string,1:string}
+     */
+    private static function parseDateRange(array $query): array
+    {
+        $today = date('Y-m-d');
+        $from = self::validDate($query['from'] ?? null) ?? date('Y-m-d', strtotime('-6 days'));
+        $to = self::validDate($query['to'] ?? null) ?? $today;
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        // Cap range at 366 days so a bad filter cannot scan forever.
+        $maxFrom = date('Y-m-d', strtotime($to . ' -365 days'));
+        if ($from < $maxFrom) {
+            $from = $maxFrom;
+        }
+        return [$from, $to];
+    }
+
+    private static function validDate(mixed $value): ?string
+    {
+        if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+        $dt = \DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        return $dt && $dt->format('Y-m-d') === $value ? $value : null;
     }
 
     private static function forbidden(array $session): array

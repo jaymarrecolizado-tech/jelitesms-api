@@ -41,7 +41,7 @@ if (!isset($headers['authorization']) && isset($_SERVER['REDIRECT_HTTP_AUTHORIZA
 
 if ($path === '/admin' || str_starts_with($path, '/admin/')) {
     AdminApp::$basePath = $base;
-    $result = AdminApp::fromConfig()->handle($_SESSION, $_SERVER['REQUEST_METHOD'], $path, $_POST);
+    $result = AdminApp::fromConfig()->handle($_SESSION, $_SERVER['REQUEST_METHOD'], $path, $_POST, $_GET);
 
     http_response_code($result['status']);
     if (isset($result['location'])) {

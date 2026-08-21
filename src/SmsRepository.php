@@ -107,6 +107,33 @@ class SmsRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Per-API-key send counts for the admin Usage page (inclusive date range).
+     *
+     * @return list<array{id:int,name:string,key_prefix:string,active:int|string,total:int|string,queued:int|string,sending:int|string,sent:int|string,failed:int|string,last_used:?string}>
+     */
+    public function usageByKey(string $fromDate, string $toDate): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT k.id, k.name, k.key_prefix, k.active,
+                    COUNT(m.id) AS total,
+                    COALESCE(SUM(m.status = "queued"), 0) AS queued,
+                    COALESCE(SUM(m.status = "sending"), 0) AS sending,
+                    COALESCE(SUM(m.status = "sent"), 0) AS sent,
+                    COALESCE(SUM(m.status = "failed"), 0) AS failed,
+                    MAX(m.created_at) AS last_used
+             FROM api_keys k
+             LEFT JOIN sms_messages m
+               ON m.api_key_id = k.id
+              AND DATE(m.created_at) >= ?
+              AND DATE(m.created_at) <= ?
+             GROUP BY k.id, k.name, k.key_prefix, k.active
+             ORDER BY total DESC, k.name ASC'
+        );
+        $stmt->execute([$fromDate, $toDate]);
+        return $stmt->fetchAll();
+    }
+
     public function markSent(int $id, ?string $gatewayMessageId): void
     {
         $stmt = $this->db->prepare(

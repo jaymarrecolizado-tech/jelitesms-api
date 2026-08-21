@@ -201,3 +201,59 @@ check(str_contains($r['body'], 'HTTP 429'), 'test sends hit the selected key rat
 // Cleanup.
 $db->exec("DELETE FROM sms_messages WHERE api_key_id = " . (int) $keyId);
 $db->exec("DELETE FROM api_keys WHERE id = " . (int) $keyId);
+
+section('Admin Usage page');
+
+$fresh = [];
+$r = $admin->handle($fresh, 'GET', '/admin/usage');
+same(302, $r['status'], 'logged-out /admin/usage redirects');
+
+$usageA = $keyRepo->create('Usage App A', 30);
+$usageB = $keyRepo->create('Usage App B', 30);
+$smsRepo->enqueue((int) $usageA['id'], '+639171111111', 'ua1', 'usage-a-1');
+$smsRepo->enqueue((int) $usageA['id'], '+639171111112', 'ua2', 'usage-a-2');
+$smsRepo->enqueue((int) $usageB['id'], '+639172222222', 'ub1', 'usage-b-1');
+$smsRepo->markSent((int) $smsRepo->findByClientRef((int) $usageA['id'], 'usage-a-1')['id'], 'gw-u1');
+
+$today = date('Y-m-d');
+$r = $admin->handle($sess, 'GET', '/admin/usage', [], ['from' => $today, 'to' => $today]);
+same(200, $r['status'], 'usage page renders');
+check(str_contains($r['body'], 'Usage by app'), 'usage heading shown');
+check(str_contains($r['body'], 'Usage App A'), 'app A listed');
+check(str_contains($r['body'], 'Usage App B'), 'app B listed');
+check(str_contains($r['body'], 'name="from"'), 'from date filter present');
+check(str_contains($r['body'], 'name="to"'), 'to date filter present');
+
+// App A should show total 2; sent at least 1 in the HTML table row context.
+check(preg_match('/Usage App A.*?<\/tr>/s', $r['body'], $mA) === 1, 'app A row captured');
+check(str_contains($mA[0], '>2</td>'), 'app A total is 2');
+
+$stats = $smsRepo->usageByKey($today, $today);
+$byName = [];
+foreach ($stats as $row) {
+    $byName[$row['name']] = $row;
+}
+same(2, (int) $byName['Usage App A']['total'], 'repo: App A total 2');
+same(1, (int) $byName['Usage App A']['sent'], 'repo: App A sent 1');
+same(1, (int) $byName['Usage App B']['total'], 'repo: App B total 1');
+check($byName['Usage App A']['last_used'] !== null, 'repo: App A last_used set');
+
+// Invalid dates fall back to a valid default range (still 200).
+$r = $admin->handle($sess, 'GET', '/admin/usage', [], ['from' => 'not-a-date', 'to' => 'also-bad']);
+same(200, $r['status'], 'invalid dates still render with defaults');
+
+// Outside range → zeros for these keys' totals in the filtered window.
+$past = date('Y-m-d', strtotime('-30 days'));
+$statsPast = $smsRepo->usageByKey($past, $past);
+$pastA = null;
+foreach ($statsPast as $row) {
+    if ($row['name'] === 'Usage App A') {
+        $pastA = $row;
+        break;
+    }
+}
+same(0, (int) ($pastA['total'] ?? -1), 'date filter excludes today messages from past day');
+
+$db->exec('DELETE FROM sms_messages WHERE api_key_id IN (' . (int) $usageA['id'] . ',' . (int) $usageB['id'] . ')');
+$db->exec('DELETE FROM api_keys WHERE id IN (' . (int) $usageA['id'] . ',' . (int) $usageB['id'] . ')');
+

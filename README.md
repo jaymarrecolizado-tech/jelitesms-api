@@ -112,6 +112,7 @@ Open `http://localhost/projects/jelite_sms_api/admin` and log in with `ADMIN_USE
 - **Settings** — edit gateway/SMS tunables (`SMS_*`, `APP_URL`) without touching `.env`; values are stored in the `app_settings` table and override `.env`. The gateway password is write-only (blank = unchanged).
 - **API Keys** — create (plaintext shown once), list, revoke.
 - **Messages** — read-only view of the 50 most recent queue rows.
+- **Usage** — per-app (API key) counts for a date range: total / sent / failed / queued / sending, plus last used. Default range is the last 7 days.
 - **Test** — config probe (database/gateway status) and send-a-test-SMS as a selected consumer key, with optional one-shot worker run. Sends count against that key's rate limit; the response panel shows the same JSON shape consumer apps get.
 
 Admin credentials live only in `.env` (`ADMIN_USER`, `ADMIN_PASSWORD`) and cannot be changed from the UI. Consumer Bearer keys do not grant admin access.
@@ -124,12 +125,12 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Admin Test page + Hostinger
+## Planned next: Phase 5.5 (local) then Hostinger
 
 See [`PLAN.md`](PLAN.md) for full detail.
 
-- **Phase 5 Test / Playground** (`/admin/test`): check config (same as health/gateway probe) and send a test SMS **as a selected API key** — same path consumer apps use (`POST /api/v1/sms/send`), plus optional one-shot worker run.
-- **Phase 6 — Hostinger**: deploy this API on the same VPS as your apps; phone via sms-gate.app **cloud** (not phone LAN IP).
+- **Phase 5.5 (active):** XAMPP worker Task Scheduler + `docs/CONSUMERS.md` (PHP / Laravel / React) + `docs/DEPLOY.md` (what to change when uploading later). No live VPS deploy in this phase.
+- **Phase 6 (deferred):** deploy this API on the same Hostinger VPS as your apps; phone via sms-gate.app **cloud**.
 
 ## Out of scope
 

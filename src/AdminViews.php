@@ -15,6 +15,7 @@ class AdminViews
                 '/admin/settings' => 'Settings',
                 '/admin/keys' => 'API Keys',
                 '/admin/messages' => 'Messages',
+                '/admin/usage' => 'Usage',
                 '/admin/test' => 'Test',
             ];
             foreach ($links as $href => $label) {
@@ -122,6 +123,49 @@ class AdminViews
     }
 
     /**
+     * Per-consumer usage totals for a date range.
+     *
+     * @param list<array> $rows from SmsRepository::usageByKey
+     */
+    public static function usagePage(string $from, string $to, array $rows): string
+    {
+        $totals = ['total' => 0, 'queued' => 0, 'sending' => 0, 'sent' => 0, 'failed' => 0];
+        $body = '';
+        foreach ($rows as $r) {
+            foreach (['total', 'queued', 'sending', 'sent', 'failed'] as $col) {
+                $totals[$col] += (int) $r[$col];
+            }
+            $status = ((int) $r['active']) === 1 ? 'active' : 'revoked';
+            $body .= '<tr><td>' . e((string) $r['name']) . '</td><td><code>'
+                . e((string) $r['key_prefix']) . '…</code></td><td>' . $status . '</td><td>'
+                . (int) $r['total'] . '</td><td>' . (int) $r['sent'] . '</td><td>'
+                . (int) $r['failed'] . '</td><td>' . (int) $r['queued'] . '</td><td>'
+                . (int) $r['sending'] . '</td><td>'
+                . e((string) ($r['last_used'] ?? '—')) . '</td></tr>';
+        }
+
+        $filter = '<form method="get" action="' . AdminApp::url('/admin/usage') . '" class="card narrow filter">'
+            . '<label>From<input type="date" name="from" value="' . e($from) . '" required></label>'
+            . '<label>To<input type="date" name="to" value="' . e($to) . '" required></label>'
+            . '<button type="submit">Apply</button></form>';
+
+        $summary = '<p class="hint">Showing <strong>' . e($from) . '</strong> → <strong>' . e($to)
+            . '</strong>. Totals: <strong>' . $totals['total'] . '</strong> messages'
+            . ' (' . $totals['sent'] . ' sent, ' . $totals['failed'] . ' failed, '
+            . $totals['queued'] . ' queued).</p>';
+
+        $content = '<h1>Usage by app</h1>'
+            . '<p class="hint">Each API key name is a consumer app. Counts are from queued SMS in the selected date range.</p>'
+            . $filter . $summary
+            . '<table><thead><tr><th>App / key</th><th>Prefix</th><th>Status</th><th>Total</th>'
+            . '<th>Sent</th><th>Failed</th><th>Queued</th><th>Sending</th><th>Last used</th></tr></thead><tbody>'
+            . ($body !== '' ? $body : '<tr><td colspan="9">No API keys yet.</td></tr>')
+            . '</tbody></table>';
+
+        return self::layout('Usage', '/admin/usage', $content, true);
+    }
+
+    /**
      * Test / Playground page: config probe + send-as-consumer form.
      *
      * @param list<array> $keys active API keys
@@ -220,6 +264,8 @@ textarea { padding: 7px 9px; border: 1px solid #b9c4cd; border-radius: 5px; font
 label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
 label.check input { width: auto; }
 pre { background: #eef2f6; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
+.card.filter { grid-template-columns: 1fr 1fr auto; align-items: end; max-width: 560px; }
+@media (max-width: 640px) { .card.filter { grid-template-columns: 1fr; } }
 </style>
 CSS;
     }

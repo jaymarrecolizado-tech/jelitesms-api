@@ -4,9 +4,9 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
-> **Status: Phase 1–5 core COMPLETE; Test/Playground page still planned.** Items marked ✅ are
-> implemented. Remaining: **Phase 5 Test page** (config probe + send-as-consumer), live gateway
-> verification, Hostinger deploy (Phase 6), optional `openapi.yaml`.
+> **Status: Phase 1–5 COMPLETE (incl. Test + Usage).** Active next work: **Phase 5.5 —
+> local-first ops + consumer/deploy docs** (XAMPP now, Hostinger-ready later). Live VPS
+> upload remains **Phase 6** (deferred until local testing is comfortable).
 
 ---
 
@@ -130,7 +130,7 @@ Browser interface so operators can change gateway/SMS settings and manage API ke
 
 | Choice | Decision |
 |--------|----------|
-| URLs | `/admin` (login), `/admin/settings`, `/admin/keys`, `/admin/messages`, **`/admin/test`** (planned) |
+| URLs | `/admin` (login), `/admin/settings`, `/admin/keys`, `/admin/messages`, `/admin/usage`, `/admin/test` |
 | Auth | Session cookie; bootstrap only in `.env`: `ADMIN_USER`, `ADMIN_PASSWORD` |
 | Storage | MySQL `app_settings` (not JSON files) |
 | UI can change | Gateway + SMS tunables + API keys |
@@ -153,6 +153,15 @@ Browser interface so operators can change gateway/SMS settings and manage API ke
 #### Messages page (read-only) — ✅
 
 - Recent queue rows: id, to, status, attempts, error, timestamps
+
+#### Usage page — ✅ DONE (`/admin/usage`)
+
+Monitor **which consumer apps** use the API (each named API key = one app).
+
+- Date filter (`from` / `to`, default last 7 days, max 366-day window)
+- Per-key table: name, prefix, active/revoked, **total / sent / failed / queued / sending**, **last used**
+- Summary totals for the selected range
+- Data from `sms_messages` joined to `api_keys` (no extra logging table)
 
 #### Test / Playground page — ✅ DONE (`/admin/test`)
 
@@ -230,9 +239,91 @@ flowchart LR
 
 ---
 
-### Phase 6 — Hostinger deploy (consumer apps already on VPS) — ⬜ PLANNED
+### Phase 5.5 — Local-first ops + docs (Hostinger-ready later) — ⬜ ACTIVE
 
-Consumer apps already live on **Hostinger VPS KVM 2**. Deploy this API on the **same VPS**. The physical phone uses **sms-gate.app public cloud** (Hostinger cannot reach a phone LAN IP).
+Still testing on **XAMPP localhost**. Do **not** upload to Hostinger in this phase. Keep one codebase portable: local today → env + cron swap on VPS later.
+
+```mermaid
+flowchart LR
+  Local[XAMPP_now]
+  Docs[CONSUMERS_plus_DEPLOY]
+  Later[Hostinger_Phase6]
+
+  Local -->|Task_Scheduler_worker| Docs
+  Docs -->|same_repo_env_swap| Later
+```
+
+#### Locked scope
+
+| Do now (Phase 5.5) | Defer |
+|--------------------|--------|
+| Automate worker on **XAMPP** (Task Scheduler) | Live Hostinger upload/deploy (Phase 6) |
+| Portable schedule docs + Hostinger cron **snippet** for later | Delivery-state sync, OpenAPI, alerts |
+| Document API usage for fresh **PHP**, **Laravel**, **React** projects | Wiring real Hostinger apps in their repos |
+
+#### 1. Worker automation (local, portable) — ⬜
+
+Without a schedule, messages stay `queued` unless Admin → Test “run worker” or CLI is used.
+
+- Document Windows Task Scheduler every minute, e.g.:
+
+```
+C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
+```
+
+- Add `bin/register-worker-task.ps1` — registers the task using paths derived from the project folder (re-run after moving the folder).
+- Same docs section includes **Hostinger cron** one-liner for Phase 6 (copy-paste later):
+
+```
+* * * * * php /path/to/jelite_sms_api/bin/worker.php >> /path/to/jelite_sms_api/worker.log 2>&1
+```
+
+#### 2. Deploy portability runbook — ⬜ (`docs/DEPLOY.md`)
+
+One codebase; only env/hosting differs. Document what to change when uploading later (no live deploy yet):
+
+| Setting | Local XAMPP | Hostinger later |
+|---------|-------------|-----------------|
+| `APP_URL` | `http://localhost/projects/jelite_sms_api` | `https://sms-api.yourdomain.com` |
+| `APP_ENV` | `dev` | `prod` → DB `jelite_sms_api_prod` |
+| `DB_*` | local MySQL | Hostinger MySQL |
+| Gateway | cloud or LAN phone | **cloud only** (`api.sms-gate.app`) |
+| Worker | Task Scheduler | cron |
+| Admin | `/admin` | same paths under new base URL |
+
+Also: never commit `.env`; upload code + `.env.example`; run `bin/setup.php` on server; create new prod API keys (or migrate carefully).
+
+#### 3. Consumer documentation — ⬜ (`docs/CONSUMERS.md`)
+
+Full usage guides for fresh projects; link from `README.md`. Shared contract:
+
+- Base URL (local now; VPS URL later)
+- `Authorization: Bearer <key>` — **one named key per app** (Admin → API Keys)
+- `POST /api/v1/sms/send` → `{ to, message, client_ref? }` → `202` + `{ id, status }`
+- `GET /api/v1/sms/{id}` for status
+- Never put the key in browser / `NEXT_PUBLIC_*` / Vite client env
+
+**Plain PHP:** config `SMS_API_URL` + `SMS_API_KEY`; curl send + status + `401`/`422`/`429` handling.
+
+**Laravel:** `.env` + optional `config/services.php`; `Http::withToken(...)->post(...)`; call from controller/job/service only.
+
+**React:** browser never calls this API. Pattern: React UI → your Laravel/Node/PHP backend → jelite_sms_api with server-side key. Document anti-pattern of SPA `fetch` with Bearer.
+
+Local examples use: `http://localhost/projects/jelite_sms_api`  
+Note in each section: swap base URL when Phase 6 goes live.
+
+#### Phase 5.5 done when
+
+1. Worker runs every minute on XAMPP via Task Scheduler (script + docs).
+2. `docs/CONSUMERS.md` covers PHP, Laravel, React.
+3. `docs/DEPLOY.md` lists exactly what to change on upload.
+4. `README.md` / this plan point to those docs.
+
+---
+
+### Phase 6 — Hostinger deploy (consumer apps already on VPS) — ⬜ DEFERRED
+
+Do this **after** Phase 5.5 and comfortable local testing. Consumer apps already live on **Hostinger VPS KVM 2**. Deploy this API on the **same VPS**. Phone uses **sms-gate.app public cloud** (Hostinger cannot reach a phone LAN IP).
 
 ```mermaid
 flowchart LR
@@ -251,23 +342,34 @@ flowchart LR
 ```
 
 1. Phone: Android SMS Gateway in **cloud** mode; credentials via Admin → Settings (or `.env`).
-2. Upload project to Hostinger (subdomain preferred, e.g. `https://sms-api.yourdomain.com`).
-3. `APP_ENV=prod`, MySQL, `bin/setup.php`, cron every minute for `bin/worker.php`.
-4. One API key per consumer app; each app’s **server** `.env` gets `SMS_API_URL` + `SMS_API_KEY`.
+2. Upload project to Hostinger (subdomain preferred, e.g. `https://sms-api.yourdomain.com`) — follow `docs/DEPLOY.md`.
+3. `APP_ENV=prod`, MySQL, `bin/setup.php`, Hostinger cron every minute for `bin/worker.php`.
+4. One API key per consumer app; each app’s **server** `.env` gets `SMS_API_URL` + `SMS_API_KEY` (see `docs/CONSUMERS.md`).
 5. React browser never holds the key — only backends call this API.
 
 Do **not** set `SMS_GATEWAY_URL` to `http://192.168.x.x:8080` on Hostinger.
 
 ---
 
-### Remaining (not yet built)
+### Remaining (priority order)
 
-- ✅ Gateway credentials configured (via Admin Settings) and **live SMS verified end-to-end** (202 queued → worker → cloud `Pending` → device `Delivered` on real phone)
-- ⬜ Optional: delivery-state sync — poll gateway for `Sent`/`Delivered` states and update `sms_messages.status`
-- ⬜ Schedule `bin/worker.php` via cron / Windows Task Scheduler (local) and Hostinger cron (prod)
-- ⬜ **Phase 6 — Hostinger deploy** + `_prod` database
-- ⬜ Issue dedicated API keys per consumer (HRMIS, Laravel app, etc.)
+**Phase 5.5 (active — local XAMPP):**
+
+- ⬜ Task Scheduler + `bin/register-worker-task.ps1` + worker schedule docs (incl. Hostinger cron snippet)
+- ⬜ `docs/DEPLOY.md` — portable upload checklist
+- ⬜ `docs/CONSUMERS.md` — plain PHP, Laravel, React usage
+- ⬜ Link those docs from `README.md`
+
+**Phase 6 (deferred):**
+
+- ⬜ Live Hostinger deploy + `_prod` database
+- ⬜ Issue dedicated API keys per consumer on prod and wire app `.env` files
+
+**Later / optional:**
+
+- ⬜ Delivery-state sync — poll gateway for `Sent`/`Delivered` and update `sms_messages.status`
 - ⬜ Optional: `openapi.yaml`
+- ✅ Gateway credentials + live SMS already verified on local/cloud path
 
 Diagnostics helpers: `bin/check-queue.php` (recent queue rows), `bin/check-message.php <gateway_message_id>` (live gateway state).
 
@@ -303,7 +405,9 @@ Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/mess
 
 ---
 
-## Consumer examples (target README) — ✅ shipped in README.md
+## Consumer examples
+
+Short examples remain in `README.md`. Full fresh-project guides (PHP / Laravel / React) are planned in **Phase 5.5** as [`docs/CONSUMERS.md`](docs/CONSUMERS.md).
 
 ```bash
 curl -X POST "http://localhost/projects/jelite_sms_api/api/v1/sms/send" \
@@ -319,7 +423,7 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 
 ## After Phase 1 ships
 
-- ⬜ Issue separate API keys per consumer (HRMIS, Laravel app, etc.).
+- ⬜ Issue separate API keys per consumer (HRMIS, Laravel app, etc.) — local keys anytime; prod keys in Phase 6.
 - ✅ Keep LOKA on its existing gateway until you choose to migrate (untouched).
 - ✅ SSO / Sign in with DICT stays on the parked plan outside this folder.
 
@@ -330,4 +434,4 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 1. **File → Open Folder** → `C:\xampp\htdocs\Projects\jelite_sms_api`
 2. New **Agent** chat
 3. Paste the contents of [`NEW_CHAT_PROMPT.md`](NEW_CHAT_PROMPT.md)
-4. Say: implement **Phase 5 `/admin/test` (config probe + send-as-consumer)** per `PLAN.md`, or continue Hostinger Phase 6 when ready
+4. Say: implement **Phase 5.5** (local worker schedule + `docs/CONSUMERS.md` + `docs/DEPLOY.md`) per `PLAN.md`
