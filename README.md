@@ -1,0 +1,116 @@
+# JE Lite SMS API
+
+Standalone PHP + MySQL HTTP service that wraps [SMS Gateway for Android](https://github.com/capcom6/android-sms-gateway) ([sms-gate.app](https://sms-gate.app)) so Laravel, CodeIgniter, React backends, HRMIS, and other DICT apps can send SMS with an API key.
+
+- Send model: **enqueue + worker** — the HTTP call never blocks on the gateway.
+- API keys are stored **hashed**; consumers authenticate with `Authorization: Bearer <key>`.
+- Separate databases per environment: `jelite_sms_api_dev` / `_test` / `_prod` (from `APP_ENV`).
+- React/SPA must never call this API directly — only server-side backends hold keys.
+
+## Layout
+
+| Path | Purpose |
+|------|---------|
+| `index.php` + `.htaccess` | Front controller (XAMPP-friendly URLs) |
+| `src/` | Config, DB, router/App, Phone E.164, SmsGateway client, repositories |
+| `bin/setup.php` | Create DB for current `APP_ENV` + apply schema |
+| `bin/worker.php` | Queue drain (run via cron) |
+| `bin/manage-keys.php` | Create / list / revoke API keys |
+| `database/schema.sql` | Tables: `api_keys`, `sms_messages` |
+| `tests/run.php` | Dependency-free test suite (mock gateway) |
+
+## Setup (XAMPP)
+
+1. Copy `.env.example` to `.env` and fill in gateway credentials (`SMS_GATEWAY_URL/USERNAME/PASSWORD` from the Android app).
+2. Create the database + tables:
+
+   ```
+   C:\xampp\php\php.exe bin\setup.php
+   ```
+
+3. Issue a key:
+
+   ```
+   C:\xampp\php\php.exe bin\manage-keys.php create --name="HRMIS" --rate=30
+   ```
+
+4. Schedule the worker (cron / Task Scheduler), e.g. every minute:
+
+   ```
+   C:\xampp\php\php.exe C:\xampp\htdocs\Projects\jelite_sms_api\bin\worker.php
+   ```
+
+## API v1
+
+### `POST /api/v1/sms/send`
+
+```bash
+curl -X POST "http://localhost/projects/jelite_sms_api/api/v1/sms/send" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"to\":\"+639171234567\",\"message\":\"Hello from JE Lite SMS API\"}"
+```
+
+Response `202` (or `200` when `client_ref` replays an existing message):
+
+```json
+{ "id": 1, "status": "queued" }
+```
+
+Errors: `400 invalid_json`, `401 unauthorized`, `422 validation_failed` (with `fields`), `429 rate_limited`.
+
+### `GET /api/v1/sms/{id}`
+
+Queue/delivery status: `queued` → `sending` → `sent` | `failed`. Only the owning API key can read a message.
+
+### `GET /api/v1/health`
+
+No auth. Reports database and gateway reachability (no secrets).
+
+## Consumer examples
+
+Laravel:
+
+```php
+Http::withToken($key)->post($base.'/api/v1/sms/send', [
+    'to' => '+639171234567',
+    'message' => 'Hello',
+    'client_ref' => 'leave-request-42', // optional idempotency
+]);
+```
+
+CodeIgniter / plain PHP:
+
+```php
+$ch = curl_init($base . '/api/v1/sms/send');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode(['to' => '+639171234567', 'message' => 'Hello']),
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key],
+    CURLOPT_RETURNTRANSFER => true,
+]);
+```
+
+React: call your own backend only — never embed the Bearer key in browser code.
+
+## Gateway modes (`SMS_GATEWAY_URL` + `SMS_API_PATH`)
+
+| Mode | URL | Path |
+|------|-----|------|
+| Local phone | `http://PHONE_LAN_IP:8080` | `/message` |
+| Private/self-hosted | `https://sms.yourdomain.com` | `/api/3rdparty/v1/messages` |
+| Public cloud | `https://api.sms-gate.app` | `/3rdparty/v1/messages` |
+
+Cloud is HTTPS-only (HTTP can 308 and break POST); the client normalizes this automatically.
+
+## Tests
+
+```
+C:\xampp\php\php.exe tests\run.php
+```
+
+Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
+
+## Out of scope
+
+Microsoft Entra / DICT SSO (parked separately) · inbound SMS/reply commands · migrating LOKA off its direct gateway path.

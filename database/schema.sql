@@ -1,0 +1,29 @@
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    key_hash CHAR(64) NOT NULL UNIQUE,
+    key_prefix VARCHAR(12) NOT NULL,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    rate_limit_per_minute INT UNSIGNED NOT NULL DEFAULT 30,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at DATETIME NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sms_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    api_key_id INT UNSIGNED NOT NULL,
+    to_e164 VARCHAR(20) NOT NULL,
+    body VARCHAR(1000) NOT NULL,
+    client_ref VARCHAR(100) NULL DEFAULT NULL,
+    status ENUM('queued','sending','sent','failed') NOT NULL DEFAULT 'queued',
+    gateway_message_id VARCHAR(100) NULL DEFAULT NULL,
+    error VARCHAR(500) NULL DEFAULT NULL,
+    attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    sent_at DATETIME NULL DEFAULT NULL,
+    CONSTRAINT fk_sms_api_key FOREIGN KEY (api_key_id) REFERENCES api_keys (id),
+    UNIQUE KEY uq_key_client_ref (api_key_id, client_ref),
+    KEY idx_status (status),
+    KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
