@@ -4,6 +4,10 @@
 **Purpose:** Standalone HTTP SMS API wrapping Android SMS Gateway (capcom6 / sms-gate.app) for Laravel, CodeIgniter, React backends, LOKA consumers, HRMIS, and other DICT apps.  
 **Out of scope for this project:** Microsoft Entra / DICT SSO (separate plan later).
 
+> **Status: Phase 1–3 COMPLETE, Phase 4 mostly complete.** All items marked ✅ are implemented,
+> tested (63/63 passing) and pushed to `github.com/jaymarrecolizado-tech/jelitesms-api`.
+> Remaining items are marked ⬜.
+
 ---
 
 ## Locked decisions
@@ -58,13 +62,17 @@ Docs: https://docs.sms-gate.app
 
 ---
 
-## Public API (v1)
+## Public API (v1) — ✅ all live and smoke-tested
 
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| `POST` | `/api/v1/sms/send` | Bearer | Enqueue SMS |
-| `GET` | `/api/v1/sms/{id}` | Bearer | Queue/delivery status |
-| `GET` | `/api/v1/health` | none | Liveness + gateway reachability (no secrets) |
+| Method | Path | Auth | Purpose | Status |
+|--------|------|------|---------|--------|
+| `POST` | `/api/v1/sms/send` | Bearer | Enqueue SMS | ✅ |
+| `GET` | `/api/v1/sms/{id}` | Bearer | Queue/delivery status (key-isolated) | ✅ |
+| `GET` | `/api/v1/health` | none | Liveness + gateway reachability (no secrets) | ✅ |
+
+Extras shipped beyond the original spec: idempotent `client_ref` replay (`200` + same id),
+per-key rate limiting (`429`), key isolation on status reads, `400 invalid_json` / `422 validation_failed`
+JSON errors.
 
 ### POST `/api/v1/sms/send`
 
@@ -86,37 +94,45 @@ Docs: https://docs.sms-gate.app
 
 ## Build phases
 
-### Phase 1 — Scaffold
+### Phase 1 — Scaffold — ✅ DONE
 
-1. PHP router / front controller under this project (XAMPP-friendly URL).
-2. `.env` + `.env.example` (never commit real secrets).
-3. Separate MySQL databases for **dev / test / prod** (no JSON file storage).
-4. Config: `APP_URL`, DB creds, gateway URL/user/pass/path, timeouts, default country `63`, max message length `320`.
+1. ✅ PHP router / front controller (`index.php` + `.htaccess`, XAMPP-friendly URL; base path derived from filesystem, `Authorization` header preserved through mod_rewrite).
+2. ✅ `.env` + `.env.example` (real secrets gitignored).
+3. ✅ Separate MySQL databases for **dev / test / prod** via `APP_ENV` (`jelite_sms_api_dev/_test/_prod`); dev + test created.
+4. ✅ Config: `APP_URL`, DB creds, gateway URL/user/pass/path, timeouts, default country `63`, max message length `320` (+ `SMS_MAX_ATTEMPTS`, `WORKER_BATCH_SIZE`).
 
-### Phase 2 — Data model
+### Phase 2 — Data model — ✅ DONE
 
-Tables:
+Tables (in `database/schema.sql`, applied by `bin/setup.php`):
 
-- `api_keys` — name, key hash, prefix for display, active, rate limits, created/revoked
-- `sms_messages` — id, api_key_id, to_e164, body, client_ref, status (`queued` / `sending` / `sent` / `failed`), gateway_message_id, error, attempts, timestamps
+- ✅ `api_keys` — name, SHA-256 key hash, prefix for display, active, rate limits, created/revoked
+- ✅ `sms_messages` — id, api_key_id, to_e164, body, client_ref (unique per key → idempotency), status (`queued` / `sending` / `sent` / `failed`), gateway_message_id, error, attempts, timestamps
 
-### Phase 3 — Core services
+### Phase 3 — Core services — ✅ DONE
 
-1. Phone normalize to E.164 (default country `63`).
-2. `SmsGateway` client (port LOKA logic: Basic auth, JSON payload, short timeouts, no follow redirects).
-3. Queue enqueue on `POST /send`; worker/cron drains queue.
-4. API key create/revoke (CLI and/or minimal admin page); store **hashed** keys only.
-5. Rate limiting per key; validation errors as clear JSON.
+1. ✅ Phone normalize to E.164 (default country `63`) — `src/Phone.php`
+2. ✅ `SmsGateway` client ported from LOKA (`src/SmsGateway.php`: Basic auth, JSON payload, short timeouts, no follow redirects, cloud-path forcing, URL normalization; injectable transport for tests)
+3. ✅ Queue enqueue on `POST /send`; worker drains queue (`bin/worker.php`, soft-fail with retry until `SMS_MAX_ATTEMPTS`)
+4. ✅ API key create/revoke/list CLI (`bin/manage-keys.php`); **hashed** keys only
+5. ✅ Rate limiting per key; validation errors as clear JSON
 
-### Phase 4 — Docs and tests
+### Phase 4 — Docs and tests — mostly done
 
-1. `README.md` — setup, env, curl, Laravel HTTP client, CodeIgniter/PHP example, React-via-backend note.
-2. Optional `openapi.yaml`.
-3. PHPUnit (or project test runner): auth, validation, enqueue, status — mock gateway only in **tests**, never stub SMS for normal dev/prod.
+1. ✅ `README.md` — setup, env, curl, Laravel HTTP client, CodeIgniter/PHP example, React-via-backend note
+2. ⬜ Optional `openapi.yaml`
+3. ✅ Tests (`tests/run.php`, dependency-free runner): auth, validation, enqueue/status/idempotency/rate-limit, gateway contract, worker drain — **63/63 passing**; gateway mocked only in tests
+
+### Remaining (not yet built)
+
+- ⬜ Fill real gateway credentials in `.env` and verify a live SMS delivery end-to-end
+- ⬜ Schedule `bin/worker.php` via cron / Windows Task Scheduler (currently manual runs only)
+- ⬜ Create the `_prod` database when deploying beyond this machine
+- ⬜ Issue dedicated API keys per consumer (HRMIS, Laravel app, etc.) — Playground/Smoke keys exist for local testing only
+- ⬜ Optional: `openapi.yaml`
 
 ---
 
-## Suggested env vars
+## Suggested env vars — ✅ all supported (.env / .env.example)
 
 ```
 APP_URL=http://localhost/projects/jelite_sms_api
@@ -140,7 +156,7 @@ Local phone test: `SMS_GATEWAY_URL=http://PHONE_IP:8080` and `SMS_API_PATH=/mess
 
 ---
 
-## Consumer examples (target README)
+## Consumer examples (target README) — ✅ shipped in README.md
 
 ```bash
 curl -X POST "http://localhost/projects/jelite_sms_api/api/v1/sms/send" \
@@ -156,9 +172,9 @@ React: call your Laravel/CI/Node backend only — never embed the Bearer key in 
 
 ## After Phase 1 ships
 
-- Issue separate API keys per consumer (HRMIS, Laravel app, etc.).
-- Keep LOKA on its existing gateway until you choose to migrate.
-- SSO / Sign in with DICT stays on the parked plan outside this folder.
+- ⬜ Issue separate API keys per consumer (HRMIS, Laravel app, etc.).
+- ✅ Keep LOKA on its existing gateway until you choose to migrate (untouched).
+- ✅ SSO / Sign in with DICT stays on the parked plan outside this folder.
 
 ---
 
