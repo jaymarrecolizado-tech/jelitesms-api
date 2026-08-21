@@ -132,9 +132,11 @@ C:\xampp\php\php.exe tests\run.php
 
 Uses the `jelite_sms_api_test` database and a mocked gateway transport — no real SMS is sent from tests.
 
-## Planned next: Phase 6 (Hostinger)
+## Planned next: Phase 5.6 Consumer docs coverage
 
-Phase 5.5 deliverables are in place (`docs/CONSUMERS.md`, `docs/DEPLOY.md`, Task Scheduler script). See [`PLAN.md`](PLAN.md) for the deferred Hostinger deploy steps.
+**Hostinger deploy (Phase 6) is skipped for now.**
+
+**Next agent work:** expand [`docs/CONSUMERS.md`](docs/CONSUMERS.md) per **Phase 5.6** in [`PLAN.md`](PLAN.md) (quick start, fuller PHP/Laravel/React, CodeIgniter, troubleshooting). Baseline file already exists — expand, don’t delete.
 
 ## Out of scope
 
